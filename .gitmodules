@@ -1,0 +1,4 @@
+[submodule "processing/pyEcholab"]
+	path = processing/pyEcholab
+	url = git@github.com:CI-CMG/pyEcholab.git
+	branch = RHT-EK80-Svf
