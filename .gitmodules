@@ -2,3 +2,6 @@
 	path = processing/pyEcholab
 	url = git@github.com:CI-CMG/pyEcholab.git
 	branch = RHT-EK80-Svf
+[submodule "processing/CRIMAC"]
+	path = processing/CRIMAC
+	url = git@github.com:erlingdevold/CRIMAC-classifiers-bottom.git
