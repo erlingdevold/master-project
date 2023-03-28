@@ -6,12 +6,15 @@ from const import MAIN_FREQ,simrad_color_table
 import xarray as xr
 import pandas as pd
 
+import math
+
 from echolab2.instruments import EK80, EK60
 import os
 
 from CRIMAC.bottomdetection import simple_bottom_detector as btm
 from CRIMAC.bottomdetection.bottom_utils import detect_bottom_single_channel
 
+import scipy.signal as signal
 
 
 def format_datetime(x, pos=None):
@@ -73,13 +76,20 @@ class Processor:
 
         #     print(self._data)
         FREQ_38KHZ = 38000
+        datasets = []
         for element in self._data:
             data = self._data[element][0]
             if np.allclose(data.get_frequency(), FREQ_38KHZ, atol=1e-2) :
                 print("skipping, we only look at higher frequnecies")
                 continue
 
-            self.process_sv(data)
+            ds = self.process_sv(data)
+            datasets.append(ds)
+        
+        for ds in datasets:
+            self.plot_data(ds.sv[0],lines=ds.bottom.data[0],name=ds.freq.data[0])
+
+
 
 
         # data_calibration = self._data.get_calibration()
@@ -95,7 +105,6 @@ class Processor:
         # s_v = self._data.get_sv(calibration=data_calibration)
         # print(s_v)
 
-        # self.process_sv(sv)
 
 
     def process_sv(self,data) -> list:
@@ -123,118 +132,118 @@ class Processor:
 
         sv.set_navigation(data.nmea_data)
         print(sv.latitude,sv.longitude)
-        self.plot_data(sv)
 
-        # print(sv)
-        # data_3d = np.expand_dims(sv.data, axis=0)
-        # xr_sv = xr.DataArray(name="sv", data=data_3d, 
-        #                     dims=["freq", "ping_time", "range"],
-        #                     coords={"freq": [sv.frequency],
-        #                             "ping_time": sv.ping_time, 
-        #                             "range": sv.range,
-        #                             })
-        # # # add navigation to xarray
+        data_3d = np.expand_dims(sv.data, axis=0)
+        xr_sv = xr.DataArray(name="sv", data=data_3d, 
+                            dims=["freq", "ping_time", "range"],
+                            coords={"freq": [sv.frequency],
+                                    "ping_time": sv.ping_time, 
+                                    "range": sv.range,
+                                    })
+        # # add navigation to xarray
 
 
 
-        # depth = xr.DataArray(name="transducer_draft", data=np.expand_dims(sv.transducer_offset, axis=0), 
-        #                     dims=['freq', 'ping_time'],
-        #                     coords={ 'freq': [sv.frequency],
-        #                             'ping_time': sv.ping_time,
-        #                            })
+        depth = xr.DataArray(name="transducer_draft", data=np.expand_dims(sv.transducer_offset, axis=0), 
+                            dims=['freq', 'ping_time'],
+                            coords={ 'freq': [sv.frequency],
+                                    'ping_time': sv.ping_time,
+                                   })
         
-        # pulse_length = None
-        # angle_alongship = None
-        # angle_athwartship = None
+        pulse_length = None
+        angle_alongship = None
+        angle_athwartship = None
 
-        # if hasattr(self._data, 'pulse_length'):
-        #     pulse_length = np.unique(self._data.pulse_length)[0]
-        # elif hasattr(self._data, 'pulse_duration'):
-        #     pulse_length = np.unique(self._data.pulse_duration)[0]
-        # else:
-        #     pulse_length = 0
+        if hasattr(self._data, 'pulse_length'):
+            pulse_length = np.unique(data.pulse_length)[0]
+        elif hasattr(self._data, 'pulse_duration'):
+            pulse_length = np.unique(data.pulse_duration)[0]
+        else:
+            pulse_length = 0
 
-        # try:
-        #     alongship, athwartship = self.get_angles()
-        # except AttributeError:
-        #     # Continuous wave sample
-        #     alongship = np.zeros(sv.shape) * np.nan
-        #     athwartship = np.zeros(sv.shape) * np.nan
+        try:
+            alongship, athwartship = self.get_angles(data)
+        except AttributeError:
+            # Continuous wave sample
+            alongship = np.zeros(sv.shape) * np.nan
+            athwartship = np.zeros(sv.shape) * np.nan
 
         
-        # position_ds = xr.Dataset(data_vars = dict(
-        #     lat=('ping_time' , sv.latitude), 
-        #     lon=("ping_time",sv.longitude), 
-        #     distance_nmi=('ping_time' , sv.trip_distance_nmi),
-        # ),
-        # coords = dict(ping_time=('ping_time', sv.ping_time))
-        # )
+        position_ds = xr.Dataset(data_vars = dict(
+            lat=('ping_time' , sv.latitude), 
+            lon=("ping_time",sv.longitude), 
+            distance_nmi=('ping_time' , sv.trip_distance_nmi),
+        ),
+        coords = dict(ping_time=('ping_time', sv.ping_time))
+        )
 
 
-        # heave = self._data.motion_data.heave
+        heave = data.motion_data.heave
 
         
-        # heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
-        #                     dims=['freqs','ping_time'],
-        #                     coords={'ping_time': sv.ping_time,
-        #                             'freqs': [sv.frequency],
-        #                             }
-        #                     )
+        heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
+                            dims=['freq','ping_time'],
+                            coords={'ping_time': sv.ping_time,
+                                    'freq': [sv.frequency],
+                                    }
+                            )
 
-        # threshold_sv = 10 ** (-31.0 / 10)
+        threshold_sv = 10 ** (-31.0 / 10)
 
-        # heave_corrected_transducer_depth = heave[0] + depth[0]
-        # pulse_duration = float(pulse_length)
+        heave_corrected_transducer_depth = heave[0] + depth[0]
+        pulse_duration = float(pulse_length)
 
-        # depth_ranges, indices = detect_bottom_single_channel(
-        #     xr_sv[0], threshold_sv,  heave_corrected_transducer_depth, pulse_duration, minimum_range=10.
-        # )
+        depth_ranges, indices = detect_bottom_single_channel(
+            xr_sv[0], threshold_sv,  heave_corrected_transducer_depth, pulse_duration, minimum_range=10.
+        )
         
-        # depth_ranges_back_step, indices_back_step = btm.back_step(xr_sv[0], indices, heave_corrected_transducer_depth, .001)
-        
-
-        # bottom_depths = heave_corrected_transducer_depth + depth_ranges_back_step - .5 
-        # bottom_depths = np.nan_to_num(bottom_depths, nan=np.min(bottom_depths))
-        # bottom_depths = xr.DataArray(name='bottom_depth', data=bottom_depths, dims=['ping_time'],
-        #                          coords={'ping_time': xr_sv['ping_time']})
+        depth_ranges_back_step, indices_back_step = btm.back_step(xr_sv[0], indices, heave_corrected_transducer_depth, .001)
         
 
-        # sv_ds = xr.Dataset(data_vars = dict(
-        #     sv=(["freq", "ping_time", "range"], xr_sv.data),
-        #     angle_alongship=(["freq","ping_time","range"], np.expand_dims(alongship.data, axis=0)),
-        #     angle_athwartship=(["freq","ping_time","range"], np.expand_dims(athwartship.data, axis=0)),
-        #     transducer_draft=(["freq","ping_time"], depth.data),
-        #     botttom = (["freq", "ping_time"], np.expand_dims(bottom_depths.data, axis=0)),
-        #     heave = (["ping_time"], self._data.motion_data.heave),
-        #     pitch = (["ping_time"], self._data.motion_data.pitch),
-        #     roll = (["ping_time"], self._data.motion_data.roll),
-        #     heading = (["ping_time"], self._data.motion_data.heading),
-        #     pulse_length = (["freq"], [pulse_length]),
-        #     lat = (["ping_time"], sv.latitude),
-        #     lon = (["ping_time"], sv.longitude),
-        #     distance = (["ping_time"], sv.trip_distance_nmi)
-        #     ),
-        #     coords = dict(
-        #         freq = (["freq"], [sv.frequency]),
-        #         ping_time = (["ping_time"], sv.ping_time),
-        #         range = (["range"], sv.range),
-        #     )
-        # )
+        bottom_depths = heave_corrected_transducer_depth + depth_ranges_back_step - .5 
+        bottom_depths = np.nan_to_num(bottom_depths, nan=np.min(bottom_depths))
+        bottom_depths = xr.DataArray(name='bottom_depth', data=bottom_depths, dims=['ping_time'],
+                                 coords={'ping_time': xr_sv['ping_time']})
+        
 
-        # return sv_ds
+        sv_ds = xr.Dataset(data_vars = dict(
+            sv=(["freq", "ping_time", "range"], xr_sv.data),
+            angle_alongship=(["freq","ping_time","range"], np.expand_dims(alongship.data, axis=0)),
+            angle_athwartship=(["freq","ping_time","range"], np.expand_dims(athwartship.data, axis=0)),
+            transducer_draft=(["freq","ping_time"], depth.data),
+            bottom = (["freq", "ping_time"], np.expand_dims(bottom_depths.data, axis=0)),
+            heave = (["freq","ping_time"], np.expand_dims(data.motion_data.heave,axis=0)),
+            pitch = (["freq","ping_time"], np.expand_dims(data.motion_data.pitch,axis=0)),
+            roll = (["freq","ping_time"], np.expand_dims(data.motion_data.roll,axis=0)),
+            heading = (["freq","ping_time"], np.expand_dims(data.motion_data.heading,axis=0)),
+            pulse_length = (["freq"], [pulse_length]),
+            lat = (["freq","ping_time"], np.expand_dims(sv.latitude,axis=0)),
+            lon = (["freq","ping_time"], np.expand_dims(sv.longitude,axis=0)),
+            distance = (["freq","ping_time"], np.expand_dims(sv.trip_distance_nmi,axis=0))
+            ),
+            coords = dict(
+                freq = (["freq"], [sv.frequency]),
+                ping_time = (["ping_time"], sv.ping_time),
+                range = (["range"], sv.range),
+            )
+        )
 
 
-    def get_angles(self):
+        # self.plot_data(sv_ds.sv[0],lines=sv_ds.bottom.data[0])
+        return sv_ds
+
+
+    def get_angles(self,data):
         """
         Get the physical angles of the beams in sample.
         returns [alongship, athwartship]
         """
-        return self._data.get_physical_angles(calibration=self._data.get_calibration())
+        return data.get_physical_angles(calibration=data.get_calibration())
 
-    def get_nmea_data(self,sv):
-        return [self._data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
+    def get_nmea_data(self,sv,data):
+        return [data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
     
-    def plot_data(self,sv, lines=None):
+    def plot_data(self,sv, lines=None,name=None):
         print(sv)
         data = np.array(sv.data)
 
@@ -245,13 +254,15 @@ class Processor:
         y_ticks = sv.range.astype('float')
         
         data = np.flipud(np.rot90(data, 1))
-        im = plt.imshow(data, cmap=simrad_cmap, aspect='auto', interpolation='none', extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+        im = plt.imshow(data.real, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+    
 
-        plt.hlines(lines, x_ticks[0], x_ticks[-1], colors='r', linestyles='dashed')
+        plt.hlines(lines, x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=1)
     
         plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
-        plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
-        plt.savefig(f'{sv.data_type}{sv.channel_id}.png')
+        # plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
+        plt.savefig(f'asd{name}.png')
+        plt.clf()
 
 
 
@@ -262,9 +273,11 @@ if __name__ == "__main__":
     crimac_data : str ='processing/crimac_data/cruise data/2021/D20210811-T134411.raw'
 
     file = nordtind_data
-    files = p.read_files('processing/crimac_data/cruise data/2021')
-    # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
+    # files = p.read_files('crimac_data/cruise data/2021')
+    #files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
+    files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
         p.process_raw(file)
+        plt.clf()
 
     print("done")

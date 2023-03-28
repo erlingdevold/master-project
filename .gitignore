@@ -3,3 +3,6 @@ processing/crimac_data
 processing/es80-38--D20191119-T013701.raw
 processing/es80-38--D20191119-T013701.idx
 processing/es80-120--D20191119-T013458.raw
+*.nc
+db/
+*.sql
