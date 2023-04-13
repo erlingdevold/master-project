@@ -116,26 +116,16 @@ class Processor:
         labels_lat, labels_lon = labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data
 
         print(ds,labels)
+        lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
+        label_candidates = []
         for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
             # labels = labels.dropna(dim='Startposisjon lengde',how='any')
-
-            
             haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
             
-            idx = np.argmin(haversine) # lowest distance between label and hydroacoustic
+            x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
 
-            idxs = np.argsort(haversine)
-            print(haversine[haversine < DISTANCE_KM_THRESHOLD].shape)
-            # print(haversine[idxs[:10]])
-            # print(labels_lat[idx],labels_lon[idx],lat,lon,haversine[idx])
-
-    def get_xyz(self,lat,lon, R=6371e3):
-        """
-        calculates xyz coordinates from lat,lon using  the Spherical Law of Cosines 
-        """
-
-        return R*np.cos(lat)*np.cos(lon),R*np.cos(lat)*np.sin(lon),R*np.sin(lat)
-
+            
+    
     def calculate_haversine(self,lat1,lon1,lat2,lon2):
 
         lon1,lat1,lon2,lat2 = map(np.radians, [lon1,lat1,lon2,lat2])
@@ -147,9 +137,7 @@ class Processor:
 
         c = 2 * np.arcsin(np.sqrt(a))
 
-        km = 6367 * c
-
-        return km
+        return 6367 * c
 
 
         
