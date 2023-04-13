@@ -5,7 +5,7 @@ from matplotlib import colors, ticker
 from const import MAIN_FREQ,simrad_color_table
 import xarray as xr
 import pandas as pd
-
+import random
 import math
 
 from echolab2.instruments import EK80, EK60
@@ -16,6 +16,7 @@ from CRIMAC.bottomdetection.bottom_utils import detect_bottom_single_channel
 
 import scipy.signal as signal
 
+DISTANCE_KM_THRESHOLD = 1. # KM threshold for labelling
 
 def format_datetime(x, pos=None):
             try:
@@ -86,11 +87,11 @@ class Processor:
             ds = self.process_sv(data)
             datasets.append(ds)
         
+        labels = xr.open_dataset('labelling/dca_labels_subset.nc')
+
         for ds in datasets:
-            self.plot_data(ds.sv[0],lines=ds.bottom.data[0],name=ds.freq.data[0])
-
-
-
+            # self.plot_data(ds,lines=ds.bottom.data[0],name=f"imgs/{random.random()}{ds.freq.data[0]}")
+            self.collate_data(ds,labels)
 
         # data_calibration = self._data.get_calibration()
 
@@ -104,6 +105,65 @@ class Processor:
         # # self.plot_data(sv)
         # s_v = self._data.get_sv(calibration=data_calibration)
         # print(s_v)
+
+
+    def collate_data(self,ds,labels):
+        """
+
+        Collate lat,lon from labels to ds
+        """
+        labels = labels.dropna(dim='dim_0',how='any')
+        labels_lat, labels_lon = labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data
+
+        print(ds,labels)
+        for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
+            # labels = labels.dropna(dim='Startposisjon lengde',how='any')
+
+            
+            haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
+            
+            idx = np.argmin(haversine) # lowest distance between label and hydroacoustic
+
+            idxs = np.argsort(haversine)
+            print(haversine[haversine < DISTANCE_KM_THRESHOLD].shape)
+            # print(haversine[idxs[:10]])
+            # print(labels_lat[idx],labels_lon[idx],lat,lon,haversine[idx])
+
+    def get_xyz(self,lat,lon, R=6371e3):
+        """
+        calculates xyz coordinates from lat,lon using  the Spherical Law of Cosines 
+        """
+
+        return R*np.cos(lat)*np.cos(lon),R*np.cos(lat)*np.sin(lon),R*np.sin(lat)
+
+    def calculate_haversine(self,lat1,lon1,lat2,lon2):
+
+        lon1,lat1,lon2,lat2 = map(np.radians, [lon1,lat1,lon2,lat2])
+
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+
+        a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+
+        c = 2 * np.arcsin(np.sqrt(a))
+
+        km = 6367 * c
+
+        return km
+
+
+        
+
+
+
+
+
+        
+
+
+
+
+
 
 
 
@@ -229,7 +289,6 @@ class Processor:
         )
 
 
-        # self.plot_data(sv_ds.sv[0],lines=sv_ds.bottom.data[0])
         return sv_ds
 
 
@@ -238,28 +297,32 @@ class Processor:
         Get the physical angles of the beams in sample.
         returns [alongship, athwartship]
         """
-        return data.get_physical_angles(calibration=data.get_calibration())
+        try:
+            return data.get_physical_angles(calibration=data.get_calibration())
+        except AttributeError as e:
+            print(e)
+            return [np.zeros(data.shape) * np.nan, np.zeros(data.shape) * np.nan]
 
     def get_nmea_data(self,sv,data):
         return [data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
     
-    def plot_data(self,sv, lines=None,name=None):
-        print(sv)
-        data = np.array(sv.data)
+    def plot_data(self,ds, lines=None,name=None):
+        data = np.array(ds.sv.data)
 
         simrad_cmap = (LinearSegmentedColormap.from_list('simrad', simrad_color_table))
         simrad_cmap.set_bad(color='grey')
 
-        x_ticks = sv.ping_time.astype('float')
-        y_ticks = sv.range.astype('float')
+        # x_ticks = sv.ping_time.astype('float')
+        # y_ticks = sv.range.astype('float')
         
         data = np.flipud(np.rot90(data, 1))
-        im = plt.imshow(data.real, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+        # im = plt.imshow(data.real, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+        ds.sv.plot(x='ping_time', y='range', col='freq', col_wrap=1, cmap=simrad_cmap, vmin=-0, vmax=-70, aspect=1, size=5, robust=True)
     
 
-        plt.hlines(lines, x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=1)
+        # plt.hlines(lines[:2], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
     
-        plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
+        # plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
         # plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
         plt.savefig(f'asd{name}.png')
         plt.clf()
@@ -273,9 +336,9 @@ if __name__ == "__main__":
     crimac_data : str ='processing/crimac_data/cruise data/2021/D20210811-T134411.raw'
 
     file = nordtind_data
-    # files = p.read_files('crimac_data/cruise data/2021')
-    #files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
-    files = p.read_files('/data/saas/Ek80FraSimrad')
+    files = p.read_files('processing/crimac_data/cruise data/2021')
+    files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
+    # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
         p.process_raw(file)
         plt.clf()

@@ -42,37 +42,48 @@ def read_data_to_xarray(data):
 
     return xr_data
 
-def write_to_file(data):
-    data.to_netcdf("dca_labels.nc")
+def write_to_file(data,fn="labelling/dca_labels.nc"):
+    data.to_netcdf(fn)
 
 
 def read_file(file):
     data = xr.open_dataset(file)
     return data
 
+def create_subset(data,labels):
+    return data[labels]
+
+import os
+
 if __name__ == "__main__":
-    data = read_data()
+    # if not os.path.exists("labelling/dca_labels.nc"):
+    #     data = read_data()
+    #     labels = read_data_to_xarray(data)
+    #     write_to_file(labels)
 
-    labels = read_data_to_xarray(data)
-    # labels.drop()
+    if os.path.exists("labelling/dca_labels_subset.nc"):
+        labels =read_file("labelling/dca_labels.nc")
 
-    write_to_file(labels)
+        all_labels =  list(labels.data_vars.keys())
+        print(all_labels)
+        labels_to_select = ["Starttidspunkt","Startdato","Stopptidspunkt","Stoppdato","Startposisjon bredde","Startposisjon lengde","Stopposisjon bredde","Stopposisjon lengde","Art FAO", "Hovedart FAO"]
+        subset_labels = create_subset(labels,labels_to_select) 
+        # convert lat on format 76,123 to 76.123
+        # remove empty lat lon values
 
-    labels =read_file("dca_labels.nc")
+        subset_labels = subset_labels.where(subset_labels["Startposisjon bredde"] != '') 
+        subset_labels["Startposisjon bredde"] = subset_labels["Startposisjon bredde"].astype(str).str.replace(",",".").astype(float)
+        subset_labels["Startposisjon lengde"] = subset_labels["Startposisjon lengde"].astype(str).str.replace(",",".").astype(float)
+        subset_labels["Stopposisjon bredde"] = subset_labels["Stopposisjon bredde"].astype(str).str.replace(",",".").astype(float)
+        subset_labels["Stopposisjon lengde"] = subset_labels["Stopposisjon lengde"].astype(str).str.replace(",",".").astype(float)
+        # drop nan values
+
+        
+
+        write_to_file(subset_labels,"labelling/dca_labels_subset.nc")
+
+    labels = read_file("labelling/dca_labels_subset.nc")
     print(labels)
-
-
-    # print(res.all())
-
-    # for row in res:
-    #     print(row)
-
-# session = sessionmaker(bind=engine)
-
-# s = session()
-
-# res = s.query(dca.DCA).limit(1)
-# print(res.all())
 
 
 
