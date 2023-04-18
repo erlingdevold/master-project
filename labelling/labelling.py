@@ -8,7 +8,7 @@ import xarray as xr
 
 engine = create_engine('postgresql://postgres:example@localhost:5420/postgres', echo=True)
 
-def create_select_query(items : list,limit = 0):
+def create_select_query(items : list,limit = 10):
     query = "SELECT "
     for item in items:
         if item == "*":

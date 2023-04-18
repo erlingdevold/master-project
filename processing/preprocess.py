@@ -117,12 +117,43 @@ class Processor:
 
         print(ds,labels)
         lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
-        label_candidates = []
+
         for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
             # labels = labels.dropna(dim='Startposisjon lengde',how='any')
             haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
             
             x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
+            
+            try:
+                unique_ids = x.groupby('Melding ID')
+            except ValueError as error:
+                print(error)
+                continue
+            print(unique_ids)
+
+            for id in unique_ids.groups:
+                unique_labels = labels.isel(dim_0=unique_ids.groups[id])
+            
+                data_vars = ['Rundvekt', 'Art FAO', 'Startposisjon bredde', 'Startposisjon lengde', 'Sluttposisjon bredde', 'Stopposisjon lengde']
+                    # new dataset with melding id as a dim
+                weight = xr.DataArray(unique_labels['Rundvekt'].data, coords=[unique_labels['Art FAO'].data] ,dims=['Art'])
+
+
+
+
+            
+
+        
+
+                
+
+
+
+
+                
+
+
+            
 
             
     
@@ -138,20 +169,6 @@ class Processor:
         c = 2 * np.arcsin(np.sqrt(a))
 
         return 6367 * c
-
-
-        
-
-
-
-
-
-        
-
-
-
-
-
 
 
 
