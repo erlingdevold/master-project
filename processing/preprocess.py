@@ -86,12 +86,18 @@ class Processor:
 
             ds = self.process_sv(data)
             datasets.append(ds)
+            # except Exception as e:
+            #     print(e)
+            #     continue
+
         
         labels = xr.open_dataset('labelling/dca_labels_subset.nc')
 
         for ds in datasets:
             # self.plot_data(ds,lines=ds.bottom.data[0],name=f"imgs/{random.random()}{ds.freq.data[0]}")
-            self.collate_data(ds,labels)
+            self.plot_data(ds,name=fn)
+            self.collate_data(ds,labels,fname=fn.split("/")[-1].split(".")[0])
+
 
         # data_calibration = self._data.get_calibration()
 
@@ -107,55 +113,80 @@ class Processor:
         # print(s_v)
 
 
-    def collate_data(self,ds,labels):
+    def collate_data(self,ds,labels,fname=""):
         """
 
         Collate lat,lon from labels to ds
         """
+        if ds is None:
+            return
         labels = labels.dropna(dim='dim_0',how='any')
         labels_lat, labels_lon = labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data
 
-        print(ds,labels)
+        # print(ds,labels)
         lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
+        fig,ax = plt.subplots()
+
+        ax.scatter(ds.lat.data[0],ds.lon.data[0],c='r',label='Ping')
+        positions = []
+        unique_positions = np.array([[],[]])
 
         for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
             # labels = labels.dropna(dim='Startposisjon lengde',how='any')
             haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
             
             x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
-            
+            # self.plot_lat_lon(ax,x)
+            tuble = [x['Startposisjon bredde'].data,x['Startposisjon lengde'].data]
+
+            unique_positions = np.append(unique_positions,tuble,axis=1)
+
+            unique_positions = np.unique(unique_positions,axis=1)
+
             try:
                 unique_ids = x.groupby('Melding ID')
             except ValueError as error:
                 print(error)
                 continue
-            print(unique_ids)
 
-            for id in unique_ids.groups:
-                unique_labels = labels.isel(dim_0=unique_ids.groups[id])
+
+            # for id in unique_ids.groups:
+            #     unique_labels = labels.isel(dim_0=unique_ids.groups[id])
             
-                data_vars = ['Rundvekt', 'Art FAO', 'Startposisjon bredde', 'Startposisjon lengde', 'Sluttposisjon bredde', 'Stopposisjon lengde']
-                    # new dataset with melding id as a dim
-                weight = xr.DataArray(unique_labels['Rundvekt'].data, coords=[unique_labels['Art FAO'].data] ,dims=['Art'])
+            #     data_vars = ['Rundvekt', 'Art FAO', 'Startposisjon bredde', 'Startposisjon lengde', 'Sluttposisjon bredde', 'Stopposisjon lengde']
+            #         # new dataset with melding id as a dim
+            #     weight = xr.DataArray(unique_labels['Rundvekt'].data, coords={"Species":unique_labels['Art FAO'].data} ,dims=['Species'], name=id)
+            #     time = xr.DataArray(unique_labels['Meldingstidspunkt'].data , name=id)
 
+            #     # print(time.data[0], ds.ping_time.data[0])
 
-
-
-            
-
+            #     art_grouped = weight.groupby("Species").max()
+                # print(art_grouped)
+        
         
 
-                
+        positions = np.array(unique_positions)
+        # lats = xr.concat(positions[0,:],dim='dim_0')
+        # lons = xr.concat(positions[1,:],dim='dim_0')
+        ax.scatter(positions[0,:],positions[1,:],c='b',label='Labels')
+        plt.legend()
+        plt.savefig(f"imgs/map{fname}.png")
+
+                # species_max_weight= []
+                # for art in art_grouped.groups:
+                #     max_weight_by_species = weight.isel(Species=art_grouped.groups[art]).max()
 
 
+    def plot_lat_lon(self,ax,labels):
+        """
+        Plot lat lon
+        """
+        # fig, ax = plt.subplots()
+        # ax.scatter(ds.lat.data[0],ds.lon.data[0],label='data')
+        ax.scatter(labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data,label='labels')
+        ax.legend()
+        
 
-
-                
-
-
-            
-
-            
     
     def calculate_haversine(self,lat1,lon1,lat2,lon2):
 
@@ -243,15 +274,22 @@ class Processor:
         )
 
 
-        heave = data.motion_data.heave
 
         
+        if sv.ping_time.shape[0] == data.motion_data.heave.shape[0]:
+            # crimac
+            heave = data.motion_data.heave
+        else:
+            p_idx = np.searchsorted(data.motion_data.times, sv.ping_time.data, side="right") - 1
+            heave = data.motion_data.heave[p_idx]
+
         heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
                             dims=['freq','ping_time'],
                             coords={'ping_time': sv.ping_time,
                                     'freq': [sv.frequency],
                                     }
                             )
+
 
         threshold_sv = 10 ** (-31.0 / 10)
 
@@ -312,24 +350,27 @@ class Processor:
         return [data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
     
     def plot_data(self,ds, lines=None,name=None):
-        data = np.array(ds.sv.data)
+        if ds is None:
+            return
+
+        data = np.array(ds.sv.data[0])
 
         simrad_cmap = (LinearSegmentedColormap.from_list('simrad', simrad_color_table))
         simrad_cmap.set_bad(color='grey')
 
-        # x_ticks = sv.ping_time.astype('float')
-        # y_ticks = sv.range.astype('float')
+        x_ticks = ds.sv.ping_time.astype('float')
+        y_ticks = ds.sv.range.astype('float')
         
         data = np.flipud(np.rot90(data, 1))
-        # im = plt.imshow(data.real, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
-        ds.sv.plot(x='ping_time', y='range', col='freq', col_wrap=1, cmap=simrad_cmap, vmin=-0, vmax=-70, aspect=1, size=5, robust=True)
+        # ds.sv[.plot(x='ping_time', y='range', col='freq', col_wrap=1, cmap=simrad_cmap, vmin=-0, vmax=-70, aspect=1, size=5, robust=True)
     
+        im = plt.imshow(data, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
 
-        # plt.hlines(lines[:2], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
+        if lines is not None:
+            plt.hlines(lines[2:], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
     
-        # plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
-        # plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
-        plt.savefig(f'asd{name}.png')
+        plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
+        plt.savefig(f'imgs/asd{name.split("/")[-1].split(".")[0]}.png')
         plt.clf()
 
 
@@ -342,7 +383,7 @@ if __name__ == "__main__":
 
     file = nordtind_data
     files = p.read_files('processing/crimac_data/cruise data/2021')
-    files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
+    # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
     # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
         p.process_raw(file)
