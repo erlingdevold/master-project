@@ -8,6 +8,8 @@ import pandas as pd
 import random
 import math
 
+from numba import njit
+
 from echolab2.instruments import EK80, EK60
 import os
 
@@ -17,6 +19,7 @@ from CRIMAC.bottomdetection.bottom_utils import detect_bottom_single_channel
 import scipy.signal as signal
 
 DISTANCE_KM_THRESHOLD = 1. # KM threshold for labelling
+DEBUG = 1
 
 def format_datetime(x, pos=None):
             try:
@@ -53,7 +56,7 @@ class Processor:
                 return EK60.EK60()
             
 
-    def process_raw(self,fn : str) -> None:
+    def process_raw(self,fn : str,plot=False) -> None:
         print(f"Processing {fn}...")
         self.echosounder = self.initialize_echosounder(fn)
 
@@ -61,21 +64,11 @@ class Processor:
 
         channels = self.echosounder.raw_data.keys()
         print(channels)
-        self._data = self.echosounder.get_channel_data()
 
-        # try:
-        #     self._data = self.echosounder.get_channel_data(frequencies=[MAIN_FREQ])[MAIN_FREQ][0]
-        # except KeyError as error:
-        #     print(f"{fn} does not contain data for {MAIN_FREQ} Hz: {error}")
 
-        #     self._data = self.echosounder.get_channel_data()
-
-        #     keys = [*self._data]
-        #     self._data = self._data[keys[1]][0]
-        #     for key in keys:
-        #         print()
-
-        #     print(self._data)
+        if DEBUG:
+            ds = self.load_nc("processing/data.nc")
+        
         FREQ_38KHZ = 38000
         datasets = []
         for element in self._data:
@@ -86,34 +79,24 @@ class Processor:
 
             ds = self.process_sv(data)
             datasets.append(ds)
-            # except Exception as e:
-            #     print(e)
-            #     continue
-
-        
+           
         labels = xr.open_dataset('labelling/dca_labels_subset.nc')
+
+        if plot:
+            fig,ax = plt.subplots()
 
         for ds in datasets:
             # self.plot_data(ds,lines=ds.bottom.data[0],name=f"imgs/{random.random()}{ds.freq.data[0]}")
-            self.plot_data(ds,name=fn)
-            self.collate_data(ds,labels,fname=fn.split("/")[-1].split(".")[0])
+            if plot:
+                self.plot_data(ds,fig=fig,ax=ax,name=fn)
+
+            # ds.to_netcdf("processing/data.nc")
+            self.collate_data(ds,labels,fname=fn.split("/")[-1].split(".")[0],plot=plot)
 
 
-        # data_calibration = self._data.get_calibration()
-
-        # sv = None
-        # try:
-        #     sv = self._data.get_Sv(calibration=data_calibration)
-        # except Exception as error:
-        #     print(error)
-        
-        # self._nmea_data = self.get_nmea_data(sv)
-        # # self.plot_data(sv)
-        # s_v = self._data.get_sv(calibration=data_calibration)
-        # print(s_v)
 
 
-    def collate_data(self,ds,labels,fname=""):
+    def collate_data(self,ds,labels,fname="",plot=False):
         """
 
         Collate lat,lon from labels to ds
@@ -125,52 +108,81 @@ class Processor:
 
         # print(ds,labels)
         lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
-        fig,ax = plt.subplots()
 
-        ax.scatter(ds.lat.data[0],ds.lon.data[0],c='r',label='Ping')
-        positions = []
-        unique_positions = np.array([[],[]])
+        if plot:
+            fig,ax = plt.subplots()
 
-        for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
-            # labels = labels.dropna(dim='Startposisjon lengde',how='any')
-            haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
+            ax.scatter(ds.lat.data[0],ds.lon.data[0],c='r',label='Ping')
+        # positions = []
+        # unique_positions = np.array([[],[]])
+
+        print(ds.lat.shape)
+        print(np.zeros((ds.lat.shape[1],labels["Startposisjon lengde"].shape[0])).shape)
+        ds_lat = ds.lat.to_numpy()
+        ds_lon = ds.lon.to_numpy()
+        labels_lat = labels["Startposisjon bredde"].to_numpy().reshape(-1,1)
+        labels_lon = labels["Startposisjon lengde"].to_numpy().reshape(-1,1)
+
+        distances = get_distance_matrix(ds_lat,ds_lon,labels_lat,labels_lon)
+
+        print(distances.shape, distances.max())
+
+
+        x = labels.isel(dim_0=np.argwhere(distances < DISTANCE_KM_THRESHOLD).flatten())
+
+        print(x.shape)
+            # store to distance matrix
+
+        
+
+            # x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
+            # # self.plot_lat_lon(ax,x)
+            # tuble = [x['Startposisjon bredde'].data,x['Startposisjon lengde'].data]
+
+            # if plot:
+            #     unique_positions = np.append(unique_positions,tuble,axis=1)
+
+            #     unique_positions = np.unique(unique_positions,axis=1)
+
+            # try:
+            #     unique_ids = x.groupby('Melding ID')
+            # except ValueError as error:
+            #     print(error)
+            #     continue
             
-            x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
-            # self.plot_lat_lon(ax,x)
-            tuble = [x['Startposisjon bredde'].data,x['Startposisjon lengde'].data]
+            # a = list(unique_ids)
 
-            unique_positions = np.append(unique_positions,tuble,axis=1)
+            # for message_id, ds_group in a:
 
-            unique_positions = np.unique(unique_positions,axis=1)
 
-            try:
-                unique_ids = x.groupby('Melding ID')
-            except ValueError as error:
-                print(error)
-                continue
+                
+
+
+
+
 
 
             # for id in unique_ids.groups:
             #     unique_labels = labels.isel(dim_0=unique_ids.groups[id])
             
-            #     data_vars = ['Rundvekt', 'Art FAO', 'Startposisjon bredde', 'Startposisjon lengde', 'Sluttposisjon bredde', 'Stopposisjon lengde']
-            #         # new dataset with melding id as a dim
             #     weight = xr.DataArray(unique_labels['Rundvekt'].data, coords={"Species":unique_labels['Art FAO'].data} ,dims=['Species'], name=id)
             #     time = xr.DataArray(unique_labels['Meldingstidspunkt'].data , name=id)
 
-            #     # print(time.data[0], ds.ping_time.data[0])
+                # print(time.data[0], ds.ping_time.data[0])
+                # np.unique(weight)
 
-            #     art_grouped = weight.groupby("Species").max()
-                # print(art_grouped)
+
+                # art_grouped = weight.groupby("Species").max()
         
         
 
-        positions = np.array(unique_positions)
+        # positions = np.array(unique_positions)
         # lats = xr.concat(positions[0,:],dim='dim_0')
         # lons = xr.concat(positions[1,:],dim='dim_0')
-        ax.scatter(positions[0,:],positions[1,:],c='b',label='Labels')
-        plt.legend()
-        plt.savefig(f"imgs/map{fname}.png")
+        if plot:
+            ax.scatter(positions[0,:],positions[1,:],c='b',label='Labels')
+            plt.legend()
+            plt.savefig(f"imgs/map{fname}.png")
 
                 # species_max_weight= []
                 # for art in art_grouped.groups:
@@ -181,27 +193,15 @@ class Processor:
         """
         Plot lat lon
         """
-        # fig, ax = plt.subplots()
-        # ax.scatter(ds.lat.data[0],ds.lon.data[0],label='data')
         ax.scatter(labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data,label='labels')
         ax.legend()
         
 
-    
-    def calculate_haversine(self,lat1,lon1,lat2,lon2):
-
-        lon1,lat1,lon2,lat2 = map(np.radians, [lon1,lat1,lon2,lat2])
-
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-
-        a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
-
-        c = 2 * np.arcsin(np.sqrt(a))
-
-        return 6367 * c
-
-
+    def load_nc(self,fn):
+        """
+        Load netcdf file
+        """
+        return xr.open_dataset(fn)
 
     def process_sv(self,data) -> list:
         # crimac processing
@@ -212,9 +212,6 @@ class Processor:
         except KeyError as error:
             data_calibration = None
             print(error)
-        # except KeyError as error:
-        #     data_calibration = None
-        #     print(f"Error: {error}")
 
         try:
             sv = data.get_Sv(calibration = data_calibration)
@@ -224,10 +221,9 @@ class Processor:
         if sv is None:
             return None
 
-        s_v = data.get_sv()
+        # s_v = data.get_sv()
 
         sv.set_navigation(data.nmea_data)
-        print(sv.latitude,sv.longitude)
 
         data_3d = np.expand_dims(sv.data, axis=0)
         xr_sv = xr.DataArray(name="sv", data=data_3d, 
@@ -247,8 +243,6 @@ class Processor:
                                    })
         
         pulse_length = None
-        angle_alongship = None
-        angle_athwartship = None
 
         if hasattr(self._data, 'pulse_length'):
             pulse_length = np.unique(data.pulse_length)[0]
@@ -265,13 +259,13 @@ class Processor:
             athwartship = np.zeros(sv.shape) * np.nan
 
         
-        position_ds = xr.Dataset(data_vars = dict(
-            lat=('ping_time' , sv.latitude), 
-            lon=("ping_time",sv.longitude), 
-            distance_nmi=('ping_time' , sv.trip_distance_nmi),
-        ),
-        coords = dict(ping_time=('ping_time', sv.ping_time))
-        )
+        # position_ds = xr.Dataset(data_vars = dict(
+        #     lat=('ping_time' , sv.latitude), 
+        #     lon=("ping_time",sv.longitude), 
+        #     distance_nmi=('ping_time' , sv.trip_distance_nmi),
+        # ),
+        # coords = dict(ping_time=('ping_time', sv.ping_time))
+        # )
 
 
 
@@ -331,7 +325,6 @@ class Processor:
             )
         )
 
-
         return sv_ds
 
 
@@ -349,9 +342,11 @@ class Processor:
     def get_nmea_data(self,sv,data):
         return [data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
     
-    def plot_data(self,ds, lines=None,name=None):
+    def plot_data(self,ds,fig=None, ax=None, lines=None,name=None):
         if ds is None:
             return
+        if ax is None:
+            ax = plt.gca()
 
         data = np.array(ds.sv.data[0])
 
@@ -364,26 +359,59 @@ class Processor:
         data = np.flipud(np.rot90(data, 1))
         # ds.sv[.plot(x='ping_time', y='range', col='freq', col_wrap=1, cmap=simrad_cmap, vmin=-0, vmax=-70, aspect=1, size=5, robust=True)
     
-        im = plt.imshow(data, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+        im = ax.imshow(data, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-50, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
 
         if lines is not None:
-            plt.hlines(lines[2:], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
+            ax.hlines(lines[2:], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
     
-        plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
-        plt.savefig(f'imgs/asd{name.split("/")[-1].split(".")[0]}.png')
-        plt.clf()
+        fig.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
+        fig.savefig(f'imgs/lower/echo_{name.split("/")[-1].split(".")[0]}.png')
+        fig.clf()
 
+
+    
+
+
+@njit
+def calculate_haversine(lat1,lon1,lat2,lon2):
+
+    dlon = np.radians(lon2)- np.radians(lon1)
+    dlat = np.radians(lat2)- np.radians(lat1)
+
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+
+    c = 2 * np.arcsin(np.sqrt(a))
+
+    return 6367 * c
+
+@njit(parallel=True)
+def get_distance_matrix(lat,lon,labels_lat,labels_lon ):
+
+    distances = np.zeros((lat.shape[1],labels_lat.shape[0]))
+
+    for i in range(lat.shape[1]):
+        haversine = calculate_haversine(lat[i],lon[i],labels_lat,labels_lon)
+
+        distances[i] = haversine
+
+    return distances
 
 
 if __name__ == "__main__":
     p = Processor()
+
+    if DEBUG:
+        ds = p.load_nc("processing/data.nc")
+        labels = p.load_nc('labelling/dca_labels_subset.nc')
+        p.collate_data(ds,labels,)
+        exit()
 
     nordtind_data : str = '/data/saas/Nordtind/ES80/ES80-120/es80-120--D20190925-T212551.raw'
     crimac_data : str ='processing/crimac_data/cruise data/2021/D20210811-T134411.raw'
 
     file = nordtind_data
     files = p.read_files('processing/crimac_data/cruise data/2021')
-    # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
+    files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')[::-1]
     # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
         p.process_raw(file)
