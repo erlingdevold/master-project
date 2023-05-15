@@ -16,6 +16,8 @@ from CRIMAC.bottomdetection.bottom_utils import detect_bottom_single_channel
 
 import scipy.signal as signal
 
+from collator import Collator
+
 DISTANCE_KM_THRESHOLD = 1. # KM threshold for labelling
 
 def format_datetime(x, pos=None):
@@ -53,7 +55,7 @@ class Processor:
                 return EK60.EK60()
             
 
-    def process_raw(self,fn : str) -> None:
+    def process_raw(self,fn : str,plot=True) -> None:
         print(f"Processing {fn}...")
         self.echosounder = self.initialize_echosounder(fn)
 
@@ -63,21 +65,10 @@ class Processor:
         print(channels)
         self._data = self.echosounder.get_channel_data()
 
-        # try:
-        #     self._data = self.echosounder.get_channel_data(frequencies=[MAIN_FREQ])[MAIN_FREQ][0]
-        # except KeyError as error:
-        #     print(f"{fn} does not contain data for {MAIN_FREQ} Hz: {error}")
 
-        #     self._data = self.echosounder.get_channel_data()
-
-        #     keys = [*self._data]
-        #     self._data = self._data[keys[1]][0]
-        #     for key in keys:
-        #         print()
-
-        #     print(self._data)
         FREQ_38KHZ = 38000
         datasets = []
+
         for element in self._data:
             data = self._data[element][0]
             if np.allclose(data.get_frequency(), FREQ_38KHZ, atol=1e-2) :
@@ -86,122 +77,17 @@ class Processor:
 
             ds = self.process_sv(data)
             datasets.append(ds)
-            # except Exception as e:
-            #     print(e)
-            #     continue
-
-        
+           
         labels = xr.open_dataset('labelling/dca_labels_subset.nc')
 
+        if plot:
+            fig,ax = plt.subplots()
+
         for ds in datasets:
-            # self.plot_data(ds,lines=ds.bottom.data[0],name=f"imgs/{random.random()}{ds.freq.data[0]}")
-            self.plot_data(ds,name=fn)
-            self.collate_data(ds,labels,fname=fn.split("/")[-1].split(".")[0])
-
-
-        # data_calibration = self._data.get_calibration()
-
-        # sv = None
-        # try:
-        #     sv = self._data.get_Sv(calibration=data_calibration)
-        # except Exception as error:
-        #     print(error)
+            if plot:
+                self.plot_data(ds,fig=fig,ax=ax,name=fn)
         
-        # self._nmea_data = self.get_nmea_data(sv)
-        # # self.plot_data(sv)
-        # s_v = self._data.get_sv(calibration=data_calibration)
-        # print(s_v)
-
-
-    def collate_data(self,ds,labels,fname=""):
-        """
-
-        Collate lat,lon from labels to ds
-        """
-        if ds is None:
-            return
-        labels = labels.dropna(dim='dim_0',how='any')
-        labels_lat, labels_lon = labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data
-
-        # print(ds,labels)
-        lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
-        fig,ax = plt.subplots()
-
-        ax.scatter(ds.lat.data[0],ds.lon.data[0],c='r',label='Ping')
-        positions = []
-        unique_positions = np.array([[],[]])
-
-        for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
-            # labels = labels.dropna(dim='Startposisjon lengde',how='any')
-            haversine = self.calculate_haversine(lat,lon,labels_lat,labels_lon)
-            
-            x = labels.isel(dim_0=np.argwhere(haversine < DISTANCE_KM_THRESHOLD).flatten())   
-            # self.plot_lat_lon(ax,x)
-            tuble = [x['Startposisjon bredde'].data,x['Startposisjon lengde'].data]
-
-            unique_positions = np.append(unique_positions,tuble,axis=1)
-
-            unique_positions = np.unique(unique_positions,axis=1)
-
-            try:
-                unique_ids = x.groupby('Melding ID')
-            except ValueError as error:
-                print(error)
-                continue
-
-
-            # for id in unique_ids.groups:
-            #     unique_labels = labels.isel(dim_0=unique_ids.groups[id])
-            
-            #     data_vars = ['Rundvekt', 'Art FAO', 'Startposisjon bredde', 'Startposisjon lengde', 'Sluttposisjon bredde', 'Stopposisjon lengde']
-            #         # new dataset with melding id as a dim
-            #     weight = xr.DataArray(unique_labels['Rundvekt'].data, coords={"Species":unique_labels['Art FAO'].data} ,dims=['Species'], name=id)
-            #     time = xr.DataArray(unique_labels['Meldingstidspunkt'].data , name=id)
-
-            #     # print(time.data[0], ds.ping_time.data[0])
-
-            #     art_grouped = weight.groupby("Species").max()
-                # print(art_grouped)
-        
-        
-
-        positions = np.array(unique_positions)
-        # lats = xr.concat(positions[0,:],dim='dim_0')
-        # lons = xr.concat(positions[1,:],dim='dim_0')
-        ax.scatter(positions[0,:],positions[1,:],c='b',label='Labels')
-        plt.legend()
-        plt.savefig(f"imgs/map{fname}.png")
-
-                # species_max_weight= []
-                # for art in art_grouped.groups:
-                #     max_weight_by_species = weight.isel(Species=art_grouped.groups[art]).max()
-
-
-    def plot_lat_lon(self,ax,labels):
-        """
-        Plot lat lon
-        """
-        # fig, ax = plt.subplots()
-        # ax.scatter(ds.lat.data[0],ds.lon.data[0],label='data')
-        ax.scatter(labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data,label='labels')
-        ax.legend()
-        
-
-    
-    def calculate_haversine(self,lat1,lon1,lat2,lon2):
-
-        lon1,lat1,lon2,lat2 = map(np.radians, [lon1,lat1,lon2,lat2])
-
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-
-        a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
-
-        c = 2 * np.arcsin(np.sqrt(a))
-
-        return 6367 * c
-
-
+        return datasets
 
     def process_sv(self,data) -> list:
         # crimac processing
@@ -280,20 +166,26 @@ class Processor:
             # crimac
             heave = data.motion_data.heave
         else:
-            p_idx = np.searchsorted(data.motion_data.times, sv.ping_time.data, side="right") - 1
+            times = data.motion_data.times
+            ping_time = sv.ping_time
+            print(ping_time)
+            p_idx = np.searchsorted(times,ping_time, side="right") - 1
             heave = data.motion_data.heave[p_idx]
+            pitch = data.motion_data.pitch[p_idx]
+            roll = data.motion_data.roll[p_idx]
+            heading = data.motion_data.heading[p_idx]
 
-        heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
-                            dims=['freq','ping_time'],
-                            coords={'ping_time': sv.ping_time,
-                                    'freq': [sv.frequency],
-                                    }
-                            )
+        # heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
+        #                     dims=['freq','ping_time'],
+        #                     coords={'ping_time': sv.ping_time,
+        #                             'freq': [sv.frequency],
+        #                             }
+        #                     )
 
 
         threshold_sv = 10 ** (-31.0 / 10)
 
-        heave_corrected_transducer_depth = heave[0] + depth[0]
+        heave_corrected_transducer_depth = heave + depth[0]
         pulse_duration = float(pulse_length)
 
         depth_ranges, indices = detect_bottom_single_channel(
@@ -315,10 +207,10 @@ class Processor:
             angle_athwartship=(["freq","ping_time","range"], np.expand_dims(athwartship.data, axis=0)),
             transducer_draft=(["freq","ping_time"], depth.data),
             bottom = (["freq", "ping_time"], np.expand_dims(bottom_depths.data, axis=0)),
-            heave = (["freq","ping_time"], np.expand_dims(data.motion_data.heave,axis=0)),
-            pitch = (["freq","ping_time"], np.expand_dims(data.motion_data.pitch,axis=0)),
-            roll = (["freq","ping_time"], np.expand_dims(data.motion_data.roll,axis=0)),
-            heading = (["freq","ping_time"], np.expand_dims(data.motion_data.heading,axis=0)),
+            heave = (["freq","ping_time"], np.expand_dims(heave,axis=0)),
+            pitch = (["freq","ping_time"], np.expand_dims(pitch,axis=0)),
+            roll = (["freq","ping_time"], np.expand_dims(roll,axis=0)),
+            heading = (["freq","ping_time"], np.expand_dims(heading,axis=0)),
             pulse_length = (["freq"], [pulse_length]),
             lat = (["freq","ping_time"], np.expand_dims(sv.latitude,axis=0)),
             lon = (["freq","ping_time"], np.expand_dims(sv.longitude,axis=0)),
@@ -349,9 +241,11 @@ class Processor:
     def get_nmea_data(self,sv,data):
         return [data.nmea_data.interpolate(sv, attr) for attr in ['position','speed','distance']]
     
-    def plot_data(self,ds, lines=None,name=None):
+    def plot_data(self,ds,fig=None, ax=None, lines=None,name=None):
         if ds is None:
             return
+        if ax is None:
+            ax = plt.gca()
 
         data = np.array(ds.sv.data[0])
 
@@ -364,19 +258,22 @@ class Processor:
         data = np.flipud(np.rot90(data, 1))
         # ds.sv[.plot(x='ping_time', y='range', col='freq', col_wrap=1, cmap=simrad_cmap, vmin=-0, vmax=-70, aspect=1, size=5, robust=True)
     
-        im = plt.imshow(data, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
+        im = ax.imshow(data, cmap=simrad_cmap, aspect='auto',vmin=-0,vmax=-70, interpolation='none',extent=[x_ticks[0],x_ticks[-1],y_ticks[-1],y_ticks[0]]) # wrong axis what
 
         if lines is not None:
-            plt.hlines(lines[2:], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
+            ax.hlines(lines[2:], x_ticks[0], x_ticks[-1], colors='red', linestyles='dashed', linewidth=.2)
     
-        plt.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
-        plt.savefig(f'imgs/asd{name.split("/")[-1].split(".")[0]}.png')
-        plt.clf()
+        fig.colorbar(im, orientation='horizontal', pad=0.05, aspect=50)
+        fig.savefig(f'imgs/crimac/echo_{name.split("/")[-1].split(".")[0]}.png')
+        fig.clf()
+
 
 
 
 if __name__ == "__main__":
     p = Processor()
+    collator = Collator()
+    collator.load_labels()
 
     nordtind_data : str = '/data/saas/Nordtind/ES80/ES80-120/es80-120--D20190925-T212551.raw'
     crimac_data : str ='processing/crimac_data/cruise data/2021/D20210811-T134411.raw'
@@ -386,7 +283,11 @@ if __name__ == "__main__":
     # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
     # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
-        p.process_raw(file)
+        example = p.process_raw(file)
+        for ds in example:
+            collated = collator.collate(ds,fname=file,plot=True)
+            print('collated')
+
         plt.clf()
 
     print("done")
