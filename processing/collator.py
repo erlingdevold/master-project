@@ -3,7 +3,7 @@ import xarray as xr
 import numba as nb
 import matplotlib.pyplot as plt
 
-from utils import apply_haversine, calculate_haversine
+from utils import calculate_distance, calculate_haversine,calculate_haversine_unvectorized
 
 
 DISTANCE_KM_THRESHOLD = 10. # KM threshold for labelling
@@ -46,9 +46,11 @@ class Collator:
         lat_transect = np.array(ds.lat.data[0])
         lon_transect = np.array(ds.lon.data[0])
 
-        distance_matrix = apply_haversine(lat_transect[:,np.newaxis],labels_lat,lon_transect[:,np.newaxis],labels_lon)
+        distance_matrix = calculate_haversine_unvectorized(lat_transect[:,np.newaxis],labels_lat,lon_transect[:,np.newaxis],labels_lon)
+        print(distance_matrix.shape)
         # find all indices where distance is less than threshold
         indices = np.argwhere(distance_matrix < DISTANCE_KM_THRESHOLD)
+        print(indices.shape)
 
         for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
             # labels = labels.dropna(dim='Startposisjon lengde',how='any')
