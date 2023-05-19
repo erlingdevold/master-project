@@ -54,10 +54,10 @@ class Collator:
             selected_labels = xr.load_dataset("processing/example.nc")
         else:
             selected_labels = self.labels.isel(dim_0=indices)
+        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels),"threshold":DISTANCE_KM_THRESHOLD,})
         
         selected_labels = selected_labels.dropna(dim='dim_0',how='any')
 
-        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels),"threshold":DISTANCE_KM_THRESHOLD})
 
         if plot:
             plt.scatter(ds.lat.data,ds.lon.data,label='Vessel')
@@ -77,7 +77,7 @@ class Collator:
 
         for group in groups:
             group_labels = selected_labels_grouped[group]
-            for group_art_key, group_art_ds in list(group_labels.groupby("Art FAO")):
+            for group_art_key, group_art_ds in list(group_labels.groupby("Art FAO (kode)")):
                 if group_art_ds["Meldingsversjon"].data.max() != 1:
                     print("wow")
                 if group_art_key not in dict:
@@ -117,8 +117,9 @@ class Collator:
         ds = load_dataset(fname)
         label_obj = self.collate(ds,fname=fname,plot=True)
         self.store_labels(label_obj,fname=fname)
+
     def store_label_information(self,fn,data):
-        with open("ds/label_information_{fn}.json", 'w+') as fp:
+        with open(f"ds/stats/label_information_{fn}_{DISTANCE_KM_THRESHOLD}.json", 'w+') as fp:
             json.dump(data, fp)
             
 
