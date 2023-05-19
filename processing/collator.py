@@ -54,7 +54,7 @@ class Collator:
             selected_labels = xr.load_dataset("processing/example.nc")
         else:
             selected_labels = self.labels.isel(dim_0=indices)
-        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels),"threshold":DISTANCE_KM_THRESHOLD,})
+        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels.data[0]),"threshold":DISTANCE_KM_THRESHOLD,})
         
         selected_labels = selected_labels.dropna(dim='dim_0',how='any')
 

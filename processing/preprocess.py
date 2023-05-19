@@ -55,11 +55,14 @@ class Processor:
                 return EK60.EK60()
             
 
-    def process_raw(self,fn : str,plot=True,to_disk=True) -> None:
+    def process_raw(self,fn : str,plot=True,to_disk=True,btm_file=False) -> None:
         print(f"Processing {fn}...")
         self.echosounder = self.initialize_echosounder(fn)
 
         self.echosounder.read_raw(fn)
+        if btm_file:
+            self.bottom_file = True
+            self.echosounder.read_bot(fn.replace(".raw",".bot"))
 
         channels = self.echosounder.raw_data.keys()
         print(channels)
@@ -71,12 +74,12 @@ class Processor:
 
         for element in self._data:
             data = self._data[element][0]
-            if np.allclose(data.get_frequency(), FREQ_38KHZ, atol=1e-2) :
-                print("skipping, we only look at higher frequnecies")
-                continue
+            if np.allclose(data.get_frequency(), 120000., atol=1e-2) :
+                print("retreived 120kHz data")
+                ds = self.process_sv(data)
+                datasets.append(ds)
+                # print("skipping, we only look at 128kHZ frequnecies")
 
-            ds = self.process_sv(data)
-            datasets.append(ds)
            
         labels = xr.open_dataset('labelling/dca_labels_subset.nc')
 
@@ -88,6 +91,7 @@ class Processor:
                 self.plot_data(ds,fig=fig,ax=ax,name=fn)
         
         if to_disk:
+            freq_idx = 128000
             self.to_ds(datasets[0],fn)
         return datasets
 
@@ -170,6 +174,9 @@ class Processor:
         if sv.ping_time.shape[0] == data.motion_data.heave.shape[0]:
             # crimac
             heave = data.motion_data.heave
+            pitch = data.motion_data.pitch
+            roll = data.motion_data.roll
+            heading = data.motion_data.heading
         else:
             times = data.motion_data.times
             ping_time = sv.ping_time
@@ -188,23 +195,26 @@ class Processor:
         #                     )
 
 
-        threshold_sv = 10 ** (-31.0 / 10)
 
-        heave_corrected_transducer_depth = heave + depth[0]
-        pulse_duration = float(pulse_length)
+        if not self.bottom_file:
+            threshold_sv = 10 ** (-31.0 / 10)
+            heave_corrected_transducer_depth = heave + depth[0]
+            pulse_duration = float(pulse_length)
 
-        depth_ranges, indices = detect_bottom_single_channel(
-            xr_sv[0], threshold_sv,  heave_corrected_transducer_depth, pulse_duration, minimum_range=10.
-        )
-        
-        depth_ranges_back_step, indices_back_step = btm.back_step(xr_sv[0], indices, heave_corrected_transducer_depth, .001)
-        
+            depth_ranges, indices = detect_bottom_single_channel(
+                xr_sv[0], threshold_sv,  heave_corrected_transducer_depth, pulse_duration, minimum_range=10.
+            )
+            
+            depth_ranges_back_step, indices_back_step = btm.back_step(xr_sv[0], indices, heave_corrected_transducer_depth, .001)
+            
 
-        bottom_depths = heave_corrected_transducer_depth + depth_ranges_back_step - .5 
-        bottom_depths = np.nan_to_num(bottom_depths, nan=np.min(bottom_depths))
-        bottom_depths = xr.DataArray(name='bottom_depth', data=bottom_depths, dims=['ping_time'],
-                                 coords={'ping_time': xr_sv['ping_time']})
+            bottom_depths = heave_corrected_transducer_depth + depth_ranges_back_step - .5 
+            bottom_depths = np.nan_to_num(bottom_depths, nan=np.min(bottom_depths))
+            bottom_depths = xr.DataArray(name='bottom_depth', data=bottom_depths, dims=['ping_time'],
+                                    coords={'ping_time': xr_sv['ping_time']})
         
+        else:
+            bottom_depths = data.get_bottom()
 
         sv_ds = xr.Dataset(data_vars = dict(
             sv=(["freq", "ping_time", "range"], xr_sv.data),
@@ -284,11 +294,12 @@ if __name__ == "__main__":
     crimac_data : str ='processing/crimac_data/cruise data/2021/D20210811-T134411.raw'
 
     file = nordtind_data
-    files = p.read_files('processing/crimac_data/cruise data/2021')
+    files = p.read_files('processing/crimac_data/sample_pipeline_output/cruise_data/2019/S2019847_PEROS_3317/ACOUSTIC/EK60/EK60_RAWDATA')
+    '/home/erling/master/processing/crimac_data/sample_pipeline_output/cruise_data/2019/S2019847_PEROS_3317/ACOUSTIC/EK60/EK60_RAWDATA'
     # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
     # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
-        example = p.process_raw(file)
+        example = p.process_raw(file,btm_file=True,to_disk=True)
         print(example)
     # collator.label_example(example[0],fname=file.split("/")[-1],plot=True)
 
