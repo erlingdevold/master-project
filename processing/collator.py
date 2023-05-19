@@ -2,11 +2,14 @@ import numpy as np
 import xarray as xr
 import numba as nb
 import matplotlib.pyplot as plt
+from time import perf_counter
+import json
 
-from utils import calculate_distance, calculate_haversine,calculate_haversine_unvectorized
+from utils import calculate_haversine_unvectorized,convert_to_unique_indexes, load_dataset
 
 
 DISTANCE_KM_THRESHOLD = 10. # KM threshold for labelling
+use_example = False
 
 class Collator:
 
@@ -34,65 +37,72 @@ class Collator:
             return
 
         labels_lat, labels_lon = np.array(self.labels['Startposisjon bredde'].data),np.array(self.labels['Startposisjon lengde'].data)
-        labels_lat_end, labels_lon_end = np.array(self.labels['Stopposisjon bredde'].data),np.array(self.labels['Stopposisjon lengde'].data)
-
-        lat,lon =ds.lat.data[0,0], ds.lon.data[0,0]
-
-        plt.scatter(ds.lat.data[0],ds.lon.data[0],c='r',label='Vessel')
-
-        positions = []
-        unique_positions_end = np.array([[],[]])
 
         lat_transect = np.array(ds.lat.data[0])
         lon_transect = np.array(ds.lon.data[0])
+        use_example = 0
 
-        distance_matrix = calculate_haversine_unvectorized(lat_transect[:,np.newaxis],labels_lat,lon_transect[:,np.newaxis],labels_lon)
-        print(distance_matrix.shape)
-        # find all indices where distance is less than threshold
-        indices = np.argwhere(distance_matrix < DISTANCE_KM_THRESHOLD)
-        print(indices.shape)
+        if not use_example:
+            time = perf_counter()
+            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
+            time_taken = perf_counter() - time
+            print(f"Time taken: {time_taken}")
 
-        for lat, lon in zip(ds.lat.data[0],ds.lon.data[0]):
-            # labels = labels.dropna(dim='Startposisjon lengde',how='any')
-            haversine_start = apply_haversine(lat,labels_lat,lon,labels_lon)
-            haversine_end = apply_haversine(lat,labels_lat_end,lon,labels_lon_end)
-            print(haversine_start.min(),haversine_end.min())
-            print(haversine_start[(haversine_start < DISTANCE_KM_THRESHOLD)])
-            
-            start = self.labels.isel(dim_0=np.argwhere(haversine_start < DISTANCE_KM_THRESHOLD).flatten())   
-            end = self.labels.isel(dim_0=np.argwhere(haversine_end < DISTANCE_KM_THRESHOLD).flatten())   
-            # need to combine start and end dataset
+            indices = convert_to_unique_indexes(indices,axis=1)
 
-            tuble = [start['Startposisjon bredde'].data,start['Startposisjon lengde'].data]
-            tuble_end = [end['Stopposisjon bredde'].data,end['Stopposisjon lengde'].data]
+        if use_example:
+            selected_labels = xr.load_dataset("processing/example.nc")
+        else:
+            selected_labels = self.labels.isel(dim_0=indices)
+        
+        selected_labels = selected_labels.dropna(dim='dim_0',how='any')
 
-            # unique_positions = np.unique(unique_positions_end,axis=1)
-
-            try:
-                unique_ids = start.groupby('Melding ID')
-            except ValueError as error:
-                print(error)
-                continue
-
-            unique_positions = np.append(unique_positions,tuble,axis=1)
-
-            unique_positions = np.unique(unique_positions,axis=1)
-
-        positions = np.array(unique_positions)
-        # end_positions = np.array(unique_positions_end)
+        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels),"threshold":DISTANCE_KM_THRESHOLD})
 
         if plot:
-            plt.scatter(positions[0,:],positions[1,:],c='b',label='start positions')
-            # plt.scatter(end_positions[0,:],end_positions[1,:],c='g', marker="o", label='end positions')
-
+            plt.scatter(ds.lat.data,ds.lon.data,label='Vessel')
+            plt.scatter(selected_labels['Startposisjon bredde'].data,selected_labels['Startposisjon lengde'].data,label='Labels')
             plt.legend()
-            plt.savefig(f"imgs/crimac/map_{fname.split('/')[-1].split('.')[0]}.png")
-            plt.clf()
+            plt.title(f"Labels for {fname.split('.')[0]}, Threshold: {DISTANCE_KM_THRESHOLD} km")
+            plt.savefig(fname=f"imgs/labels/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.svg")
 
-                # species_max_weight= []
-                # for art in art_grouped.groups:
-                #     max_weight_by_species = weight.isel(Species=art_grouped.groups[art]).max()
+        try:
+            selected_labels_grouped = selected_labels.groupby('Melding ID')
+        except Exception:
+            return {}
 
+        groups = selected_labels_grouped.groups
+
+        dict = {}
+
+        for group in groups:
+            group_labels = selected_labels_grouped[group]
+            for group_art_key, group_art_ds in list(group_labels.groupby("Art FAO")):
+                if group_art_ds["Meldingsversjon"].data.max() != 1:
+                    print("wow")
+                if group_art_key not in dict:
+                    dict[group_art_key] = {'weight':[],'date':[]}
+
+                largest_version = group_art_ds.isel(dim_0=-1)
+
+                dict[group_art_key]['weight'].append(largest_version["Rundvekt"].data)
+                dict[group_art_key]['date'].append(str(largest_version["Startdato"].data))
+                
+        for art in dict:
+            dict[art]['weight'] = np.sum(dict[art]['weight'])
+            dict[art]["date"] = list(np.unique(dict[art]["date"]))
+
+        return dict
+
+    def write_to_file(self,ds,fname):
+        fname = f"ds/labels/{fname}_labels.nc"
+        if type(ds) == np.ndarray:
+            ds = xr.DataArray(ds)
+
+        ds.to_netcdf(fname)
+    def store_labels(self,labels,fname):
+        with open(f"ds/labels/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json", 'w') as fp:
+            json.dump(labels, fp)
 
     def plot_lat_lon(self,ax,labels):
         """
@@ -103,4 +113,29 @@ class Collator:
         ax.scatter(labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data,label='labels')
         ax.legend()
 
+    def label_example(self,fname):
+        ds = load_dataset(fname)
+        label_obj = self.collate(ds,fname=fname,plot=True)
+        self.store_labels(label_obj,fname=fname)
+    def store_label_information(self,fn,data):
+        with open("ds/label_information_{fn}.json", 'w+') as fp:
+            json.dump(data, fp)
+            
+
         
+import os
+
+if __name__ == "__main__":
+    c = Collator()
+    c.load_labels()
+    for file in os.listdir("ds/ds_unlabeled"):
+        for threshold in [1,5,10,25,50,100]:
+            DISTANCE_KM_THRESHOLD = threshold
+            ds = load_dataset(f"ds/ds_unlabeled/{file}")
+
+            label_obj = c.collate(ds,fname=file,plot=True)
+            c.store_labels(label_obj,fname=file)
+            plt.clf()
+
+
+

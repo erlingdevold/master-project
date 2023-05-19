@@ -63,7 +63,7 @@ import os
 
 if __name__ == "__main__":
 
-    if os.path.exists("labelling/dca_labels.nc"):
+    if not os.path.exists("labelling/dca_labels.nc"):
         data = read_data()
         labels = read_data_to_xarray(data)
         labels = merge_labels(labels)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
         all_labels =  list(labels.data_vars.keys())
         print(all_labels)
-        labels_to_select = ["Starttidspunkt","Startdato","Stopptidspunkt","Stoppdato","Startposisjon bredde","Havdybde start","Rundvekt","Havdybde stopp","Melding ID","Meldingsversjon","Meldingstidspunkt","Startposisjon lengde","Stopposisjon bredde","Stopposisjon lengde","Art FAO", "Hovedart FAO"]
+        labels_to_select = ["Starttidspunkt","Startdato","Stopptidspunkt","Stoppdato","Startposisjon bredde","Havdybde start","Rundvekt","Havdybde stopp","Melding ID","Meldingsversjon","Meldingstidspunkt","Startposisjon lengde","Stopposisjon bredde","Stopposisjon lengde","Art FAO", "Hovedart FAO","Meldingsnummer"]
         subset_labels = create_subset(labels,labels_to_select) 
 
         subset_labels = subset_labels.where(subset_labels["Startposisjon bredde"] != '') 

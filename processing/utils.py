@@ -2,11 +2,15 @@
 import numpy as np
 import xarray as xr
 import numba as nb
+from numba import prange
 import matplotlib.pyplot as plt
-from time import time
+from time import perf_counter
 # from dask.distributed import Client
 
-@nb.njit(fastmath=True)
+def load_dataset(fname):
+    return xr.open_dataset(fname,engine='netcdf4')
+
+@nb.njit(fastmath=True,parallel=True)
 def calculate_haversine(lat_transect,lat_labels,lon_transect,lon_labels):
     lon_transect,lat_transect,lon_labels,lat_labels = np.radians(lon_transect),np.radians(lat_transect),np.radians(lon_labels),np.radians(lat_labels)
 
@@ -35,7 +39,7 @@ def calculate_distance(lat,lon,labels_lat,labels_lon):
     return calculate_haversine_unvectorized(lat,labels_lat,lon,labels_lon)
 
 @nb.njit(fastmath=True,parallel=True)
-def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lons_labels):
+def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lons_labels,threshold=10.):
     i  =0
     lat_lon_tr = np.vstack((lats_transect,lons_transect))
     lat_lon_labels = np.vstack((lats_labels,lons_labels))
@@ -43,32 +47,46 @@ def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lon
 
     array = np.zeros((lats_transect.shape[0],lons_labels.shape[0]))
     print(array.shape)
+    print("starting")
 
-    for lat_lon in lat_lon_tr.T:
-        j = 0
-        lat_tr,lon_tr = lat_lon[0],lat_lon[1]
+    for i in prange(array.shape[0]):
+        lat_i,lon_i = lats_transect[i],lons_transect[i]
+        for j in prange(array.shape[1]):
+            lat_j,lon_j = lats_labels[j],lons_labels[j]
+            km = calculate_haversine(lat_i,lat_j,lon_i,lon_j)
 
-        for lat_lon_l in lat_lon_labels.T:
-            lat_l,lon_l = lat_lon_l[0],lat_lon_l[1]
+            array[i][j] = km
 
-            km = calculate_haversine(lat_tr,lat_l,lon_tr,lon_l)
-            # array[i][j] = km
-            # j += 1
+    # time = perf_counter()
+    print("Threshold: ",threshold)
+    indexes = np.argwhere(array < threshold) 
+    # print(f"Time taken: {perf_counter() - time}")
 
+    return array, indexes
 
-        i += 1
-    return array
+def convert_to_unique_indexes(indices,axis=0):
+    """
+    Convert indices to unique indexes
+    """
+    return np.unique(indices[:,axis])
 
 
 if __name__ == "__main__":
-    lat1 = np.array([50.0]*1000)
-    lon1 = np.array([50.0]*1000)
+    lat1 = np.array([51.0,71,51,51])
+    lon1 = np.array([51.0,71.0,51,51])
 
-    lat2 = np.array([51.0]*1000000)
-    lon2 = np.array([51.0]*1000000)
+    lat2 = np.array([51.0]*10)
+    lon2 = np.array([51.0]*10)
     
     start = time()
-    calculate_haversine_unvectorized(lat1,lat2,lon1,lon2)
+    x,indices = calculate_haversine_unvectorized(lat1,lat2,lon1,lon2)
+    # asd = np.unique(indices[:,0])
+    asd = convert_to_unique_indexes(indices)
+    #returns matrix of shape (lat1,lat2), indices of shape (lat1,lat2,2)
+    # find all indices in lat2 where distance is less than threshold
+
+    # indices = convert_to_unique_indexes(indices)
+
     print(time()-start)
 
     lon1 = lon1[:, np.newaxis]

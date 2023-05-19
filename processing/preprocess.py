@@ -55,7 +55,7 @@ class Processor:
                 return EK60.EK60()
             
 
-    def process_raw(self,fn : str,plot=True) -> None:
+    def process_raw(self,fn : str,plot=True,to_disk=True) -> None:
         print(f"Processing {fn}...")
         self.echosounder = self.initialize_echosounder(fn)
 
@@ -87,7 +87,12 @@ class Processor:
             if plot:
                 self.plot_data(ds,fig=fig,ax=ax,name=fn)
         
+        if to_disk:
+            self.to_ds(datasets[0],fn)
         return datasets
+
+    def to_ds(self,ds,fn):
+        ds.to_netcdf(f'ds/ds_unlabeled/{fn.split("/")[-1].split(".")[0]}.nc')
 
     def process_sv(self,data) -> list:
         # crimac processing
@@ -284,9 +289,15 @@ if __name__ == "__main__":
     # files = p.read_files('/data/saas/Ek80FraSimrad')
     for file in files:
         example = p.process_raw(file)
-        for ds in example:
-            collated = collator.collate(ds,fname=file,plot=True)
-            print('collated')
+        print(example)
+    # collator.label_example(example[0],fname=file.split("/")[-1],plot=True)
+
+
+
+
+        # for ds in example:
+        #     collated = collator.collate(ds,fname=file,plot=True)
+        #     print('collated')
 
         plt.clf()
 
