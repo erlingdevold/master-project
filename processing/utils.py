@@ -5,7 +5,13 @@ import numba as nb
 from numba import prange
 import matplotlib.pyplot as plt
 from time import perf_counter
+from matplotlib.colors import LinearSegmentedColormap, Colormap
+
+from const import simrad_color_table
 # from dask.distributed import Client
+
+simrad_cmap = (LinearSegmentedColormap.from_list('simrad', simrad_color_table))
+simrad_cmap.set_bad(color='grey')
 
 def load_dataset(fname):
     return xr.open_dataset(fname,engine='netcdf4')

@@ -42,6 +42,10 @@ class Collator:
         lon_transect = np.array(ds.lon.data[0])
         use_example = 0
 
+        if lat_transect.shape[0] > 6000:
+            # split into 2
+            self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
+            return {}
         if not use_example:
             time = perf_counter()
             distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
@@ -54,7 +58,8 @@ class Collator:
             selected_labels = xr.load_dataset("processing/example.nc")
         else:
             selected_labels = self.labels.isel(dim_0=indices)
-        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels.data[0]),"threshold":DISTANCE_KM_THRESHOLD,})
+
+        self.store_label_information(fname.split(".")[0],{"time": time_taken,"size" : len(selected_labels["Rundvekt"].data),"threshold":DISTANCE_KM_THRESHOLD,})
         
         selected_labels = selected_labels.dropna(dim='dim_0',how='any')
 
@@ -64,7 +69,7 @@ class Collator:
             plt.scatter(selected_labels['Startposisjon bredde'].data,selected_labels['Startposisjon lengde'].data,label='Labels')
             plt.legend()
             plt.title(f"Labels for {fname.split('.')[0]}, Threshold: {DISTANCE_KM_THRESHOLD} km")
-            plt.savefig(fname=f"imgs/labels/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.svg")
+            plt.savefig(fname=f"imgs/labels_big/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.svg")
 
         try:
             selected_labels_grouped = selected_labels.groupby('Melding ID')
@@ -101,7 +106,7 @@ class Collator:
 
         ds.to_netcdf(fname)
     def store_labels(self,labels,fname):
-        with open(f"ds/labels/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json", 'w') as fp:
+        with open(f"ds/labels_crimac_2021/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json", 'w') as fp:
             json.dump(labels, fp)
 
     def plot_lat_lon(self,ax,labels):
@@ -124,19 +129,57 @@ class Collator:
             
 
         
-import os
+import os, threading
+class Watchdog:
+    """
+    Class for ensure process doesnt go out of hand
+
+    """
+    def __init__(self):
+        self.timer = None
+
+    def start(self):
+        self.timer = threading.Timer(60*3, self.stop)
+        self.timer.start()
+    
+    def stop(self):
+        print("Stopping")
+        os.kill(os.getpid(), 9)
+    
+    def reset(self):
+        self.timer.cancel()
+        self.start()
+    
+    def __del__(self):
+        self.timer.cancel()
+
+   
+
 
 if __name__ == "__main__":
     c = Collator()
     c.load_labels()
-    for file in os.listdir("ds/ds_unlabeled"):
-        for threshold in [1,5,10,25,50,100]:
+    w = Watchdog()
+
+    w.start()
+
+    files = os.listdir("ds/ds_unlabeled")
+    files.sort()
+
+    for file in files:
+        if file.split(".")[0] + f"_{DISTANCE_KM_THRESHOLD}.json" in os.listdir("ds/labels_crimac_2021"):
+            print(file, "already labeled")
+            continue
+            
+        for threshold in [1,5,10,20,]:
+            
+            print(file)
             DISTANCE_KM_THRESHOLD = threshold
             ds = load_dataset(f"ds/ds_unlabeled/{file}")
 
             label_obj = c.collate(ds,fname=file,plot=True)
+            w.reset()
             c.store_labels(label_obj,fname=file)
             plt.clf()
 
-
-
+    del w
