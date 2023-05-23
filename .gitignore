@@ -6,3 +6,10 @@ processing/es80-120--D20191119-T013458.raw
 *.nc
 db/
 *.sql
+*.zip
+
+*.meta
+*.npy
+*.zarr
+lol*
+*.pyc

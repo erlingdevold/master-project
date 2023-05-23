@@ -19,7 +19,6 @@ from utils import load_dataset,simrad_cmap
 class Normalizer:
     def __init__(self,input_dir):
         self.dir = input_dir
-        pass
         
     def load_dataset(self,fname="ds/ds_unlabeled/2019847-D20190423-T165617.nc"):
         return load_dataset(fname)
@@ -41,7 +40,6 @@ def apply_median_filter(ds: xr.Dataset):
     ds.sv.data = sv
     return ds 
 
-@nb.njit
 def median_filter(x,size=3):
     """
     Median filter
@@ -59,24 +57,27 @@ def median_filter(x,size=3):
 def rotate_image(x):
     return np.flipud(np.rot90(x,1))
 
-def crop_matrix_bottom(ds,plot=False,fn=''):
+def crop_matrix_bottom(ds,plot=False,fn='sd',crop=0):
     """
     Crop matrix from bottom line
     Finds largest index, and masks out the rest
     """
+    OFFSET = 2
 
     if ds is None:
         return
     
     bottom_data = ds['bottom'].data[0]
-
+    range = ds['range'].data
+    
     largest_bottom_data = np.max(bottom_data)
-    # crop on max value
+    index = np.argmax(range > largest_bottom_data )
 
-    index = np.argmax(ds.range.data > largest_bottom_data )
-    print(index)
+    x = ds
 
-    x = ds.isel(range=slice(None,index+2))
+    if crop:
+        x = ds.isel(range=slice(0,index + OFFSET))
+    
 
     for i, bottom in enumerate(bottom_data):
         if i == bottom_data.shape[0] - 1:
@@ -85,20 +86,39 @@ def crop_matrix_bottom(ds,plot=False,fn=''):
             biggest_index = np.argmax(x.range.data > bottom)
         except IndexError:
             continue
-        x.sv[0,i,biggest_index:] = -70
-    
-    if plot:
-        _,ax = plt.subplots(2,1)
 
-        ax[0].imshow(rotate_image(x.sv.data[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
-        ax[1].imshow(rotate_image(ds.sv.data[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
+        x.sv[0,i,biggest_index:] = -90
 
-        plt.savefig(f"{fn}.png")
-        plt.clf()
-
+    plt.imshow(rotate_image(x.sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
+    plt.savefig(f"plots/crops/cropping-{fn}.png")
+    plt.clf()
     return x
 
-def arrange_data(ds : xr.Dataset):
+def transform_sv(sv):
+    """
+    Transform sv data
+    """
+
+    sv = arrange_data(sv)
+
+    # sv = np.log(sv)
+
+    return sv
+
+def divide_in_sequences(ds, sequence_len = 256 ):
+    num_sequences = ds.shape[0]//sequence_len
+
+    num_vectors_to_use = num_sequences * sequence_len
+
+    print(ds.shape)
+    ds = ds[0:num_vectors_to_use]
+
+    print(ds.shape)
+
+    return ds.reshape(num_sequences, sequence_len,ds.shape[1])
+
+
+def arrange_data(ds : xr.Dataset,sequence_len = 256):
     """
 
     sequence based arrangement of data
@@ -114,24 +134,43 @@ def arrange_data(ds : xr.Dataset):
     if ds is None:
         return
     
-    sv = ds.sv.to_numpy()
+    
+    sv = divide_in_sequences(ds,sequence_len*2)
 
-
-
-
-
-
+    return sv
+import os
 
 if __name__ == "__main__":
     print("Normalizer.py")
 
-    norm = Normalizer("ds/ds_unlabeled/")
-    ds = norm.load_dataset()
+    # norm = Normalizer("ds/ds_unlabeled/")
+    # ds = norm.load_dataset()
+    dict = {}
+    for file in os.listdir("ds/ds_unlabeled"):
+        ds = xr.load_dataset("ds/ds_unlabeled/"+file)
+        ds = crop_matrix_bottom(ds,plot=True,fn=file)
+        ds_nmpy = ds.sv.to_numpy()
+
+        with open(file.replace(".nc",'.meta'),"w") as f:
+            f.write(np.datetime_as_string(ds.ping_time[0].data,unit='h'))
+            
+
+        np.save("ds/ds_labeled/"+file.replace(".nc",".npy"),ds_nmpy)
+        
+        del ds
+        del ds_nmpy
+    exit()
     x = crop_matrix_bottom(ds)
 
     x = apply_median_filter(x) # needs fixed up
 
-    arrange_data(x)
+    sv = arrange_data(x)
+    _,ax = plt.subplots(2,1)
 
+    ax[0].imshow(rotate_image(sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
+    
+    ax[1].imshow(rotate_image(sv[1]),cmap=simrad_cmap,aspect='auto',interpolation='none')
+
+    plt.savefig("croppingandnormalizing.png")
 
 

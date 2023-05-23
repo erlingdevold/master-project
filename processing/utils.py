@@ -35,21 +35,12 @@ def apply_haversine(lat1 , lat2 , lon1, lon2 ):
     return xr.apply_ufunc(calculate_haversine,lat1,lat2,lon1,lon2, dask='parallelized', output_dtypes=[float])
 
 def calculate_distance(lat,lon,labels_lat,labels_lon):
-    """
-    Two vectors of shape 2xN, N is number of element in corresponding vector,
-    N is different for both vectors
 
-    calculate distance between each element in vector 1 and each element in vector 2
-    can not broadcast
-    """
     return calculate_haversine_unvectorized(lat,labels_lat,lon,labels_lon)
 
 @nb.njit(fastmath=True,parallel=True)
 def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lons_labels,threshold=10.):
     i  =0
-    lat_lon_tr = np.vstack((lats_transect,lons_transect))
-    lat_lon_labels = np.vstack((lats_labels,lons_labels))
-    print(lat_lon_tr.shape)
 
     array = np.zeros((lats_transect.shape[0],lons_labels.shape[0]))
     print(array.shape)
@@ -63,10 +54,8 @@ def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lon
 
             array[i][j] = km
 
-    # time = perf_counter()
     print("Threshold: ",threshold)
     indexes = np.argwhere(array < threshold) 
-    # print(f"Time taken: {perf_counter() - time}")
 
     return array, indexes
 
@@ -76,6 +65,22 @@ def convert_to_unique_indexes(indices,axis=0):
     """
     return np.unique(indices[:,axis])
 
+def from_nc_to_zarr(dir):
+    """
+    Parse a dir to zarr arrays
+    """
+
+    import os
+    files = os.listdir(dir)
+    for file in files:
+        if file.endswith('.nc'):
+            try:
+                ds = load_dataset(dir+file)
+                ds.to_zarr(dir+'zarr/' +file.split(".")[0]+".zarr")
+            except Exception as e:
+                print(f"Could not convert {file} : {e}")
+                continue
+    
 
 if __name__ == "__main__":
     lat1 = np.array([51.0,71,51,51])
@@ -84,22 +89,17 @@ if __name__ == "__main__":
     lat2 = np.array([51.0]*10)
     lon2 = np.array([51.0]*10)
     
-    start = time()
-    x,indices = calculate_haversine_unvectorized(lat1,lat2,lon1,lon2)
-    # asd = np.unique(indices[:,0])
-    asd = convert_to_unique_indexes(indices)
-    #returns matrix of shape (lat1,lat2), indices of shape (lat1,lat2,2)
-    # find all indices in lat2 where distance is less than threshold
+    from_nc_to_zarr("ds/ds_unlabeled/")
+    # x,indices = calculate_haversine_unvectorized(lat1,lat2,lon1,lon2)
+    # # asd = np.unique(indices[:,0])
+    # asd = convert_to_unique_indexes(indices)
 
-    # indices = convert_to_unique_indexes(indices)
+    # lon1 = lon1[:, np.newaxis]
+    # lat1 = lat1[:, np.newaxis]
+    # # start = time()
+    # calculate_haversine(lat1,lat2,lon1,lon2)
+    # print(time()-start)
 
-    print(time()-start)
-
-    lon1 = lon1[:, np.newaxis]
-    lat1 = lat1[:, np.newaxis]
-    start = time()
-    calculate_haversine(lat1,lat2,lon1,lon2)
-    print(time()-start)
 
 
 
