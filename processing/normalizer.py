@@ -104,14 +104,11 @@ def transform_sv(sv):
     return sv
 
 def divide_in_sequences(ds, sequence_len = 256 ):
-    num_sequences = ds.shape[0]//sequence_len
+    num_sequences = ds.shape[0] // sequence_len
 
     num_vectors_to_use = num_sequences * sequence_len
-
-    print(ds.shape)
     ds = ds[0:num_vectors_to_use]
 
-    print(ds.shape)
 
     return ds.reshape(num_sequences, sequence_len,ds.shape[1])
 

@@ -7,6 +7,7 @@ File for converting json labels to xarray datasets.
 provides utilites for calculating delta time and converting to days
 Used for calculating mse in model
 """
+import json
 
 
 def to_utc(dt):
@@ -17,12 +18,10 @@ def from_string(string : str,fmt="%d.%m.%Y"):
     """Convert a string to a datetime object."""
     return datetime.datetime.strptime(string,fmt) 
 
-import json
 
 def create_delta_time(truth :str, obj):
     """Create a delta time object."""
     truth = from_string(truth,fmt="%Y-%m-%dT%H")
-    # obj = from_string(obj)
     return [(to_utc(from_string(x)) - to_utc(truth)).days for x in obj] 
 
 def load_json(path):
@@ -68,6 +67,7 @@ def convert_json_labels_to_xr(path,truth=''):
     ds = xr.merge([ds_weight,ds_date])
 
     return ds
+
 def load_zarr(path):
     """Load a zarr file."""
     return xr.open_zarr(path)
@@ -96,8 +96,5 @@ if __name__ == "__main__":
     # ds = convert_dir('ds/labels_crimac_2021/','') # no truth, want zarrs
     truth = np.datetime64('2019-04-26T15:28:10.470000000')
 
-    np.datetime_as_string()
-    x = load_zarr(ds)
-    print(x)
 
 

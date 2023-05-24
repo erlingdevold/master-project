@@ -1,3 +1,4 @@
+import copy
 from torch.utils.data import DataLoader
 import xarray as xr
 import torch
@@ -61,46 +62,59 @@ def transform_labels_json(annotation : dict,truth:str,selection :list = [],):
 
 import random
 
-class SyntheticEchoDataset(torch.utils.data.Dataset):
-    def __init__(self,
-                 dataset=None,
-                 seq_length=None,
-                 normalize=False,
-                 mean=None,
-                 std=None):
+def cut_dataset( start_at, cut_at, dataset, cut_ends):
+    """
+    Cuts the dataset to fit our model vector size
+    Hakon maloy
+    """
 
-        self.seq_lenght = seq_length
-        self.normalize = normalize
-        # self.data_utils = Data_utils()
-        self.mean = mean
-        self.std = std
+    if cut_ends:
+        dataset = dataset[:, start_at:cut_at]
+    return dataset
+class SyntheticDataset(torch.utils.data.Dataset):
+    def __init__(self,example_dir, annotations_dir, transform=None,target_transform=None):
+        self.example_dir_path = example_dir
+        self.annotations_dir_path = annotations_dir
+        self.example_dir = read_dir(example_dir)
+        self.annotations_dir = [x.replace(".npy","_5.json") for x in self.example_dir]
+        self.seq_length = 256
+        self.transform = transform
+        self.target_transform = target_transform
+        
 
-        self.encoder, self.decoder = self.split_encoder_decoder(
-            dataset, seq_length)
+    def __len__(self):
+        return len(self.example_dir)
 
-        # if normalize:
-        #     # Normalize data
-        #     self.encoder, self.decoder, self.targets = self.data_utils.normalize_dataset(
-        #         self.encoder, self.decoder, self.mean, self.std)
+    def __getitem__(self, idx):
+        ds = load_npy(self.example_dir_path  + self.example_dir[idx])
+        ds = torch.as_tensor(ds)
+        # truth = read_meta(self.example_dir_path  + self.example_dir[idx].replace(".npy",".meta"))
+        # ann = load_json(self.annotations_dir_path + self.annotations_dir[idx])
 
+        if self.transform:
+            sv = self.transform(ds[0])
+            x,y,z = sv.shape
+            if z > 526:
+                sv = sv[:,:,:526]
+
+
+
+        
+        # if self.target_transform:
+        #     ann, _ , _ = self.target_transform(ann,truth)
+
+        
+        enc,dec = self.split_encoder_decoder(sv,self.seq_length)
+
+        ann = copy.deepcopy(dec)
+
+        return {'enc': enc, 'dec': dec, 'target' :ann[random.choice(np.arange(0,dec.shape[0]))] }
+    
     def split_encoder_decoder(self, data, seq_length):
         encoder = data[:, :seq_length, :]
         decoder = data[:, seq_length:, :]
+
         return encoder, decoder
-
-    def __len__(self):
-        return self.encoder.shape[0]
-
-    def __getitem__(self, idx):
-        sample = {
-            'encoder': self.encoder[idx],
-            'decoder': self.decoder[idx],
-            # 'target':
-            # self.targets[random.choice(np.arange(self.targets.shape[0]))]
-        }
-
-        return sample
-
 class Dataset(torch.utils.data.Dataset):
     def __init__(self,example_dir, annotations_dir, transform=None,target_transform=None):
         self.example_dir_path = example_dir
@@ -120,22 +134,34 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.transform:
             sv = self.transform(ds[0])
-        
+
         if self.target_transform:
             ann,dates,selection = self.target_transform(ann,truth)
 
-        return torch.as_tensor(sv), [ann,] # dates,selection ]
+        return torch.as_tensor(sv), torch.as_tensor(ann) # dates,selection ]
     
 def collate_fn(batch):
-    return tuple(zip(*batch))
+    batch = batch
+    enc = torch.cat([x['enc'] for x in batch],dim=0)
+    dec = torch.cat([x['dec'] for x in batch],dim=0)
+    target = torch.cat([x['target'] for x in batch],dim=0)
+    return {'enc': enc, 'dec': dec, 'target' :target}
 
 def create_dataloader(example_dir,annotations_dir,bsz=4,transform=transform_sv,target_transform=transform_labels_json):
     ds = Dataset(example_dir,annotations_dir,transform=transform,target_transform=target_transform)
-    dl = DataLoader(ds, batch_size=bsz, shuffle=True, num_workers=0,collate_fn=collate_fn)
+    dl = DataLoader(ds, batch_size=bsz, shuffle=True, num_workers=4,collate_fn=collate_fn)
     return dl
 
-if __name__ == "__main__":
-    dl = create_dataloader("ds/ds_labeled/","ds/labels_crimac_2021/",transform=transform_sv,target_transform=transform_labels_json)
-    for item in dl:
-        print(item)
-        break
+def create_synthetic_dataloader(example_dir,annotations_dir,bsz=8,transform=transform_sv,target_transform=transform_labels_json):
+
+    ds = SyntheticDataset(example_dir,annotations_dir,transform=transform,target_transform=target_transform)
+    dl = DataLoader(ds, batch_size=bsz, shuffle=True, num_workers=4,collate_fn=collate_fn)
+
+    return dl
+
+# if __name__ == "__main__":
+    # dl = create_dataloader("ds/ds_labeled/","ds/labels_crimac_2021/",transform=transform_sv,target_transform=transform_labels_json)
+
+    # for item in dl:
+    #     print(item)
+    #     break

@@ -13,3 +13,6 @@ db/
 *.zarr
 lol*
 *.pyc
+
+*.ckpt
+hparams.yaml

@@ -80,7 +80,49 @@ def from_nc_to_zarr(dir):
             except Exception as e:
                 print(f"Could not convert {file} : {e}")
                 continue
-    
+
+def segment_image(sv,segment_size=1000):
+
+    d, x,y = sv.shape
+
+    sv2 = np.array_split(sv,sv.shape[1]//segment_size,axis=1)
+
+    return sv2
+
+def load_npy(path):
+    """Load a npy sv"""
+    return np.load(path)
+
+def segment_dir(dir):
+    """
+    Parse a dir to zarr arrays
+    """
+
+    import os
+
+    files = os.listdir(dir)
+
+    for file in files:
+        if file.endswith('.npy'):
+            try:
+                sv2 = segment_image(load_npy(dir+file)  )
+                for i in range(len(sv2)-1):
+                    np.save(dir+'segmented/' +f"{i}_"+file.split(".")[0]+".npy",sv2[i])
+                    print(file,i)
+                
+            except Exception as e:
+                print(f"Could not convert {file} : {e}")
+                continue
+
+
+def create_data_error(x):
+
+    gaussian_function = lambda x, mu, sig: np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+
+    return gaussian_function(x,0,10)
+
+
+
 
 if __name__ == "__main__":
     lat1 = np.array([51.0,71,51,51])
@@ -88,17 +130,27 @@ if __name__ == "__main__":
 
     lat2 = np.array([51.0]*10)
     lon2 = np.array([51.0]*10)
-    
-    from_nc_to_zarr("ds/ds_unlabeled/")
-    # x,indices = calculate_haversine_unvectorized(lat1,lat2,lon1,lon2)
-    # # asd = np.unique(indices[:,0])
-    # asd = convert_to_unique_indexes(indices)
 
-    # lon1 = lon1[:, np.newaxis]
-    # lat1 = lat1[:, np.newaxis]
-    # # start = time()
-    # calculate_haversine(lat1,lat2,lon1,lon2)
-    # print(time()-start)
+    y_hat = np.ones((10,))
+    y = np.random.randint(0,10000,(10,))
+    #squeeze y and y_hat between 0 and 1
+    y_hat = y_hat / np.max(y_hat)
+    y = y / np.max(y)
+
+
+
+    dates_y = [np.random.randint(-1000,1000,np.random.randint(0,10))  for _ in range(10) ]
+    mse = (y_hat - y)**2
+
+    print(mse)
+    print(dates_y[1])
+    print(create_data_error(dates_y[1]))
+    print(create_data_error(dates_y[1] * -1) )
+
+    plt.plot(dates_y[1],create_data_error(dates_y[1]))
+
+    plt.savefig("mse.png")
+
 
 
 
