@@ -135,8 +135,6 @@ def create_dataloader(example_dir,annotations_dir,bsz=4,transform=transform_sv,t
     return dl
 
 if __name__ == "__main__":
-    # ds = Dataset("ds/ds_labeled/","ds/labels_crimac_2021/",transform=transform_sv,target_transform=transform_labels_json)
-    # dl = DataLoader(ds, batch_size=4, shuffle=True, num_workers=0,collate_fn=collate_fn)
     dl = create_dataloader("ds/ds_labeled/","ds/labels_crimac_2021/",transform=transform_sv,target_transform=transform_labels_json)
     for item in dl:
         print(item)

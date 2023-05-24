@@ -13,6 +13,7 @@ import xarray as xr
 import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
+import lightning
 
 from utils import load_dataset,simrad_cmap
 
@@ -89,9 +90,6 @@ def crop_matrix_bottom(ds,plot=False,fn='sd',crop=0):
 
         x.sv[0,i,biggest_index:] = -90
 
-    plt.imshow(rotate_image(x.sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
-    plt.savefig(f"plots/crops/cropping-{fn}.png")
-    plt.clf()
     return x
 
 def transform_sv(sv):
@@ -143,34 +141,16 @@ import os
 if __name__ == "__main__":
     print("Normalizer.py")
 
-    # norm = Normalizer("ds/ds_unlabeled/")
-    # ds = norm.load_dataset()
-    dict = {}
-    for file in os.listdir("ds/ds_unlabeled"):
-        ds = xr.load_dataset("ds/ds_unlabeled/"+file)
-        ds = crop_matrix_bottom(ds,plot=True,fn=file)
-        ds_nmpy = ds.sv.to_numpy()
+    norm = Normalizer("ds/ds_unlabeled/")
+    ds = norm.load_dataset()
+    fig,ax = plt.subplots(2,1)
 
-        with open(file.replace(".nc",'.meta'),"w") as f:
-            f.write(np.datetime_as_string(ds.ping_time[0].data,unit='h'))
-            
+    ax[0].imshow(rotate_image(ds.sv.data[0]),aspect='auto',interpolation='none',label='uncropped')
+    x = crop_matrix_bottom(ds,crop=0)
+    ax[1].imshow(rotate_image(x.sv.data[0]),aspect='auto',interpolation='none',label='cropped')
 
-        np.save("ds/ds_labeled/"+file.replace(".nc",".npy"),ds_nmpy)
-        
-        del ds
-        del ds_nmpy
-    exit()
-    x = crop_matrix_bottom(ds)
+    print('asd')
+    plt.savefig("crops.png")
 
-    x = apply_median_filter(x) # needs fixed up
-
-    sv = arrange_data(x)
-    _,ax = plt.subplots(2,1)
-
-    ax[0].imshow(rotate_image(sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none')
-    
-    ax[1].imshow(rotate_image(sv[1]),cmap=simrad_cmap,aspect='auto',interpolation='none')
-
-    plt.savefig("croppingandnormalizing.png")
 
 
