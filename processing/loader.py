@@ -72,10 +72,17 @@ def cut_dataset( start_at, cut_at, dataset, cut_ends):
         dataset = dataset[:, start_at:cut_at]
     return dataset
 class SyntheticDataset(torch.utils.data.Dataset):
-    def __init__(self,example_dir, annotations_dir, transform=None,target_transform=None):
+    def __init__(self,file_split,example_dir, annotations_dir, transform=None,target_transform=None):
+        # file_split gives the split of the dataset, e.g. train, test, val
+
+        self.file_split = file_split
         self.example_dir_path = example_dir
         self.annotations_dir_path = annotations_dir
         self.example_dir = read_dir(example_dir)
+        for x in self.example_dir:
+            if x.split('_')[1] not in self.file_split:
+                self.example_dir.remove(x)
+
         self.annotations_dir = [x.replace(".npy","_5.json") for x in self.example_dir]
         self.seq_length = 256
         self.transform = transform
@@ -86,6 +93,7 @@ class SyntheticDataset(torch.utils.data.Dataset):
         return len(self.example_dir)
 
     def __getitem__(self, idx):
+
         ds = load_npy(self.example_dir_path  + self.example_dir[idx])
         ds = torch.as_tensor(ds)
         # truth = read_meta(self.example_dir_path  + self.example_dir[idx].replace(".npy",".meta"))
@@ -152,10 +160,10 @@ def create_dataloader(example_dir,annotations_dir,bsz=4,transform=transform_sv,t
     dl = DataLoader(ds, batch_size=bsz, shuffle=True, num_workers=4,collate_fn=collate_fn)
     return dl
 
-def create_synthetic_dataloader(example_dir,annotations_dir,bsz=8,transform=transform_sv,target_transform=transform_labels_json):
+def create_synthetic_dataloader(file_split,example_dir,annotations_dir,bsz=8,transform=transform_sv,target_transform=transform_labels_json,shuffle=True):
 
-    ds = SyntheticDataset(example_dir,annotations_dir,transform=transform,target_transform=target_transform)
-    dl = DataLoader(ds, batch_size=bsz, shuffle=True, num_workers=4,collate_fn=collate_fn)
+    ds = SyntheticDataset(file_split, example_dir,annotations_dir,transform=transform,target_transform=target_transform)
+    dl = DataLoader(ds, batch_size=bsz, shuffle=shuffle, num_workers=4,collate_fn=collate_fn)
 
     return dl
 

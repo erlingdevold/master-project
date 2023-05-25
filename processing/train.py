@@ -1,6 +1,7 @@
 
 
-from typing import Any
+from typing import Any, Optional
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 import numpy as np
 import torch
 import time
@@ -77,13 +78,20 @@ def calculate_synthetic_loss(probs=None,
 
 
 class LitModel(pl.LightningModule):
-    def __init__(self,):
+    def __init__(self,classification=False,load_model=False):
         super().__init__()
+
+        self.classification = classification
+        self.load_model= load_model
+        self.optimizer = None
         self.model = BERTModel()
 
-        self.classification = False
-        self.optimizer = None
         self.save_hyperparameters()
+
+        if self.load_model:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            checkpoint = torch.load('lightning_logs/version_0/checkpoints/epoch=37-step=3116.ckpt',map_location=device,strict=False)
+            self.model.load_state_dict(checkpoint)
     
     def forward(self, batch,batch_idx,forward_type):
         src = batch['enc']
@@ -133,6 +141,15 @@ class LitModel(pl.LightningModule):
             steps_per_epoch=1000,
             )  # Find suitable learning rate
         return [optimizer], [onecycle]
+    def validation_step(self,batch,batch_idx ):
+        loss, log,targets,preds = self.forward(batch,batch_idx,'val_')
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+    
+    def test_step(self,batch,batch_idx ):
+        loss, log,targets,preds = self.forward(batch,batch_idx,'test_')
+        self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        return loss
 
 def get_n_targets(mask_rate, seq_length):
     # The number of targets should be an int
@@ -210,18 +227,46 @@ def randomize_next_sequence(dec, wrng_seq, prob=0.5):
             is_next[i] = 0.0
     return dec, wrng_seq, is_next.cuda()
 
+import os
+def split_train_test_val(dir,train_size=0.8,test_size=0.1,val_size=0.1):
+    """
+    Splits the data into train, test and validation sets.
+    """
+    # Get all the files
+    files = os.listdir(dir)
+    # Shuffle the files
+    random.shuffle(files)
+    # Split into train, test and validation
+    train = files[:int(len(files) * train_size)]
+    test = files[int(len(files) * train_size):int(len(files) * (train_size + test_size))]
+    val = files[int(len(files) * (train_size + test_size)):]
+
+
+    return train, test, val
+
 if __name__ == "__main__":
 
     # ds = ()
-    # train_loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=True)
-    dl = create_synthetic_dataloader("ds/ds_labeled/segmented/","ds/labels_crimac_2021/")
+    # val_loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=False)
+
+    train,test,val = split_train_test_val("ds/ds_labeled/")
+    train_dl = create_synthetic_dataloader(train,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/")
+    test_dl = create_synthetic_dataloader(test,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",shuffle=False)
+    val_dl = create_synthetic_dataloader(val,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",shuffle=False)
+    
 
     model = LitModel()
     if torch.cuda.is_available():
-        trainer = pl.Trainer(accelerator='gpu',devices=1,)
+        trainer = pl.Trainer(accelerator='gpu',devices=1,max_epochs=30,)
 
 
-    trainer.fit(model,train_dataloaders=dl)
+    trainer.fit(model,train_dataloaders=train_dl,val_dataloaders=val_dl)
     
     #trainer.test(model)
+    trainer.save_checkpoint("models/synthetic_model.ckpt")
+
+    test_res = trainer.test(model,dataloaders=test_dl)
+    val_res = trainer.test(model,dataloaders=val_dl)
+
+
 

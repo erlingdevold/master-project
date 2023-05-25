@@ -81,11 +81,17 @@ def from_nc_to_zarr(dir):
                 print(f"Could not convert {file} : {e}")
                 continue
 
-def segment_image(sv,segment_size=1000):
+def segment_image(sv,segment_size=512):
+    """
+    Create patches of size segment_size from sv
+    all shapes must be equal
+
+    discard the last patch if it is smaller than segment_size
+    """
 
     d, x,y = sv.shape
 
-    sv2 = np.array_split(sv,sv.shape[1]//segment_size,axis=1)
+    sv2 = np.array_split(sv,sv.shape[1]// segment_size,axis=1)
 
     return sv2
 
@@ -107,8 +113,16 @@ def segment_dir(dir):
             try:
                 sv2 = segment_image(load_npy(dir+file)  )
                 for i in range(len(sv2)-1):
-                    np.save(dir+'segmented/' +f"{i}_"+file.split(".")[0]+".npy",sv2[i])
-                    print(file,i)
+                    discard_last = sv2[i].shape[1] < 512
+                    if discard_last:
+                        continue
+                    crop = sv2[i][:,:512,:]
+                    print(crop.shape)
+                    np.save(dir+'segmented/' +f"{i}_"+file.split(".")[0]+".npy",crop)
+
+
+                # for i in range(len(sv2)-1):
+                #     print(file,i)
                 
             except Exception as e:
                 print(f"Could not convert {file} : {e}")
@@ -125,31 +139,32 @@ def create_data_error(x):
 
 
 if __name__ == "__main__":
-    lat1 = np.array([51.0,71,51,51])
-    lon1 = np.array([51.0,71.0,51,51])
+    segment_dir('ds/ds_labeled/')
+    # lat1 = np.array([51.0,71,51,51])
+    # lon1 = np.array([51.0,71.0,51,51])
 
-    lat2 = np.array([51.0]*10)
-    lon2 = np.array([51.0]*10)
+    # lat2 = np.array([51.0]*10)
+    # lon2 = np.array([51.0]*10)
 
-    y_hat = np.ones((10,))
-    y = np.random.randint(0,10000,(10,))
-    #squeeze y and y_hat between 0 and 1
-    y_hat = y_hat / np.max(y_hat)
-    y = y / np.max(y)
+    # y_hat = np.ones((10,))
+    # y = np.random.randint(0,10000,(10,))
+    # #squeeze y and y_hat between 0 and 1
+    # y_hat = y_hat / np.max(y_hat)
+    # y = y / np.max(y)
 
 
 
-    dates_y = [np.random.randint(-1000,1000,np.random.randint(0,10))  for _ in range(10) ]
-    mse = (y_hat - y)**2
+    # dates_y = [np.random.randint(-1000,1000,np.random.randint(0,10))  for _ in range(10) ]
+    # mse = (y_hat - y)**2
 
-    print(mse)
-    print(dates_y[1])
-    print(create_data_error(dates_y[1]))
-    print(create_data_error(dates_y[1] * -1) )
+    # print(mse)
+    # print(dates_y[1])
+    # print(create_data_error(dates_y[1]))
+    # print(create_data_error(dates_y[1] * -1) )
 
-    plt.plot(dates_y[1],create_data_error(dates_y[1]))
+    # plt.plot(dates_y[1],create_data_error(dates_y[1]))
 
-    plt.savefig("mse.png")
+    # plt.savefig("mse.png")
 
 
 

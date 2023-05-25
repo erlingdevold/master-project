@@ -99,8 +99,6 @@ def transform_sv(sv):
 
     sv = arrange_data(sv)
 
-    # sv = np.log(sv)
-
     return sv
 
 def divide_in_sequences(ds, sequence_len = 256 ):
