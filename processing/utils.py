@@ -135,6 +135,8 @@ def create_data_error(x):
 
     return gaussian_function(x,0,10)
 
+import os
+
 
 
 

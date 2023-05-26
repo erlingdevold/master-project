@@ -1,15 +1,22 @@
 
+
+from typing import Any, Optional
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 import numpy as np
 import torch
 import time
 import random
 import torch.nn.functional as F
-#from Masks import generate_square_subsequent_mask
-from sklearn.metrics import f1_score, matthews_corrcoef, confusion_matrix, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
-import seaborn as sns
+import lightning.pytorch as pl
+from loader import create_synthetic_dataloader,create_dataloader
+import torch.nn as nn
 
-np.set_printoptions(precision=3)
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+# from sklearn.metrics import f1_score,accuracy_score,precision_score,recall_score
+from model import BERTModel
+
 
 
 def calculate_synthetic_loss(probs=None,
@@ -52,199 +59,6 @@ def calculate_synthetic_loss(probs=None,
     ), is_next_acc.item() * 100, altered_vectors_acc.item() * 100
 
 
-
-
-def calculate_classification_loss_and_accuracy(preds,targets,pos_weight=None):
-    preds = preds.view(targets.shape)
-
-    if pos_weight:
-        loss = F.mse_loss(preds,targets,reduction='mean',pos_weight=pos_weight)
-    else:
-        loss = F.mse_loss(preds,targets,reduction='mean')
-    
-    # Date weighting
-    preds = preds.detach().cpu().numpy()
-    return loss
-
-
-def train_model_classification(train_dataloader,
-                        num_epochs,
-                        model=None,
-                        optim=None,
-                        pos_weight=None):
-
-    total_loss = 0
-    i = 0
-    n_iter = 0
-
-    for epoch in range(num_epochs):
-
-        epoch_loss = 0
-        epoch_f1 = 0
-
-        i += 1
-        j = 0
-
-        for batch in train_dataloader:
-            j += 1
-
-            src = batch['encoder'].cuda()
-            dec = batch['decoder'].cuda()
-            targets = batch['target'].cuda()
-
-            dec_mask = None
-            src_mask = None
-
-            preds = model(src.float(), dec.float(), src_mask, dec_mask)
-            preds = preds
-
-            optim.optimizer.zero_grad()
-            loss, f1 = calculate_classification_loss_and_accuracy(preds=preds,
-                                              targets=targets,
-                                              pos_weight=pos_weight)
-
-            loss.backward()
-
-            optim.optimizer.step()
-            optim.step()
-
-            epoch_loss += loss.item()
-            epoch_f1 += f1
-            total_loss += loss.item()
-
-
-            n_iter += 1
-
-def temporal_proximity_weight(x_date, y_date, alpha=0.5):
-    """
-    Temporal proximity weight
-    """
-    pass
-
-
-def train_model_synthetic(train_dataloader,
-                          val_dataloader,
-                          num_epochs,
-                          model=None,
-                          optim=None,
-                          val_int=10,
-                          save_as="",
-                          mask_rate=0.25,
-                          prob_weight=0.9,
-                          mean=0,
-                          std=1,
-                          sum_loss=False,
-                          val_writer=None):
-
-    best_val = np.inf
-
-    total_loss = 0
-    i = 0
-    n_iter = 0
-
-    for epoch in range(num_epochs):
-        epoch_loss = 0
-        epoch_val_loss = 0
-        epoch_next = 0
-        epoch_next_acc = 0
-        epoch_altered_acc = 0
-        epoch_altered_loss = 0
-        i += 1
-        t1 = time.time()
-        j = 0
-        n_vals = 0
-
-        val_iter = 0
-        for batch in train_dataloader:
-            j += 1
-            # Get data
-            src = batch['encoder']
-            dec = batch['decoder']
-            wrng_seq = batch['target']
-
-            # generate_square_subsequent_mask(dec.shape[1]).cuda()
-            dec_mask = None
-            src_mask = None
-
-            # Randomize the next sequence for is_next_sequence prediction
-            dec, wrng_seq, is_next = randomize_next_sequence(dec, wrng_seq)
-
-            # Set random x% of data to zero vector
-            src, dec, targets = create_masked_LM_vectors(
-                mask_rate, src, dec, wrng_seq)
-
-            transformer_out, probs, is_next_pred = model(
-                src.float(), dec.float(), src_mask, dec_mask)
-
-            optim.optimizer.zero_grad()
-            loss, next_seq, altered_loss, is_next_acc, altered_acc = calculate_synthetic_loss(
-                probs=probs,
-                is_next_pred=is_next_pred,
-                targets=targets,
-                is_next=is_next,
-                prob_weight=prob_weight,
-                sum_loss=sum_loss)
-            loss.backward()
-            optim.optimizer.step()
-            optim.step()
-
-            epoch_loss += loss.item()
-            epoch_next += next_seq
-            epoch_next_acc += is_next_acc
-            epoch_altered_acc += altered_acc
-            epoch_altered_loss += altered_loss
-            total_loss += loss.item()
-
-            if n_iter % val_int == 0:
-                # Do a single validation run
-                val_loss, val_is_next, val_is_next_preds, val_altered_targets, val_altered_preds = validate_synthetic(
-                    model=model,
-                    val_dataloader=val_dataloader,
-                    mask_rate=mask_rate,
-                    sum_loss=sum_loss,
-                    prob_weight=prob_weight,
-                    mean=mean,
-                    std=std,
-                    train_iter=n_iter,
-                    val_writer=val_writer)
-
-                epoch_val_loss += val_loss
-
-                if n_vals == 0:
-                    pr_is_next_trg = val_is_next
-                    pr_is_next_preds = val_is_next_preds
-                    pr_altered_trg = val_altered_targets
-                    pr_altered_preds = val_altered_preds
-                else:
-                    pr_is_next_trg = torch.cat((pr_is_next_trg, val_is_next),
-                                               0)
-                    pr_is_next_preds = torch.cat(
-                        (pr_is_next_preds, val_is_next_preds), 0)
-                    pr_altered_trg = torch.cat(
-                        (pr_altered_trg, val_altered_targets), 0)
-                    pr_altered_preds = torch.cat(
-                        (pr_altered_preds, val_altered_preds), 0)
-
-                n_vals += 1
-                val_iter += 1
-            n_iter += 1
-
-            t2 = time.time()
-            total_time = (t2 - t1)
-
-        print(
-            'Epoch: %i, loss = %.3f,  next_seq_loss: %.3f, next_seq_acc: %.3f, altered_loss: %.3f, altered_acc: %.3f, Time: %.2f'
-            % (i, (epoch_loss / j), (epoch_next / j), (epoch_next_acc / j),
-               (epoch_altered_loss / j), (epoch_altered_acc / j), total_time))
-
-        epoch_val_loss = epoch_val_loss / val_iter
-        if epoch_val_loss < best_val:
-            best_val = epoch_val_loss
-            print("Saving model to: " + save_as)
-            torch.save(model.state_dict(), save_as + '_state_dict')
-            torch.save(model, save_as)
-
-    return n_iter
 
 
 def get_n_targets(mask_rate, seq_length):
@@ -303,7 +117,6 @@ def do_LM_masking(mask_rate, tensor_to_mask, wrng_seq, src):
             # Set this index to one in our target
             targets[batch, index] = 1.0
     return tensor_to_mask, targets
-
 
 def randomize_next_sequence(dec, wrng_seq, prob=0.5):
     """

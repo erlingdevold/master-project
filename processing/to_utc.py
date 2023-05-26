@@ -21,7 +21,7 @@ def from_string(string : str,fmt="%d.%m.%Y"):
 
 def create_delta_time(truth :str, obj):
     """Create a delta time object."""
-    truth = from_string(truth,fmt="%Y-%m-%dT%H")
+    truth = from_string(truth,fmt="D%Y%m%d")
     return [(to_utc(from_string(x)) - to_utc(truth)).days for x in obj] 
 
 def load_json(path):
@@ -72,10 +72,10 @@ def load_zarr(path):
     """Load a zarr file."""
     return xr.open_zarr(path)
 
+import os
 def convert_dir(path,truth):
     """Convert a directory of json files to a xr dataset."""
 
-    import os
     files = os.listdir(path )
     for file in files:
         if file.endswith('.json'):
@@ -89,12 +89,36 @@ def convert_dir(path,truth):
             # return path +"zarr/"+ file.replace(".json",'.zarr')
 
     return None
+def find_max_number_species_code(dir:str = 'ds/labels_crimac_2021/', T="_5"):
+    """
+    Find the maximum number of species code in the dataset, given threshold
+    """
+    max_species = 0
+    existing_label = np.zeros(len(os.listdir(dir)))
+    selection = set([])
+    for i,file in enumerate(os.listdir(dir)):
+        if file.endswith(T+".json"):
+            ds = load_json(dir+file)
+            max_species = max(max_species,len(ds.keys()))
+            if len(ds.keys()) > 0:
+                existing_label[i] = 1
+                keys = set([*ds])
+                selection = selection.union(keys)
+
+
+    print(selection,len(selection))
+
+    return len(selection),selection
 
 if __name__ == "__main__":
     truth = '03.05.2020'
 
     # ds = convert_dir('ds/labels_crimac_2021/','') # no truth, want zarrs
     truth = np.datetime64('2019-04-26T15:28:10.470000000')
+    t5 = find_max_number_species_code()
+    t20 = find_max_number_species_code(T="_20")
+    t10 = find_max_number_species_code(T="_10")
+    print(t5,t10,t20)
 
 
 

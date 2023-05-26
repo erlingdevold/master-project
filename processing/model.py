@@ -7,10 +7,12 @@ import math
 
 
 class BERTModel(nn.Module):
-    def __init__(self,input_d:int = 526, d_model:int = 512, nhead: int=8, d_hid:int=2048,n_layers:int=6,dropout:float=.5,seq_length=256,classification=False):
+    def __init__(self,input_d:int = 526, d_model:int = 512, nhead: int=8, d_hid:int=2048,n_layers:int=6,dropout:float=.5,seq_length=256,classification=False,n_output : int = 2,activation=None,onehot=False):
         super().__init__()
 
         self.model_type = 'Transformer'
+        self.activation = activation
+        self.onehot = onehot
         self.classification = classification
         self.pos_encoder = PositionalEncoding(d_model, dropout)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout,activation='gelu')
@@ -23,7 +25,7 @@ class BERTModel(nn.Module):
             self.prob2 = nn.Linear(d_model*seq_length*2,1)
             self.dropout2= nn.Dropout(dropout)
         else:
-            self.prob4 = nn.Linear(d_model*seq_length*2,1)
+            self.prob4 = nn.Linear(d_model*seq_length*2,n_output)
             self.dropout_4 = nn.Dropout(dropout)
 
     def forward(self,src:Tensor,dec,src_mask : Tensor,trg_mask:Tensor)-> Tensor:
@@ -58,12 +60,15 @@ class BERTModel(nn.Module):
         transformer_out = transformer_out.permute(1,0,2)
         recon_vec = transformer_out.reshape(transformer_out.shape[0],-1)
 
-        head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
+        if self.activation == 'sigmoid':
+            head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
+            head = torch.sigmoid(head)
+        else:
+            head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
+
         return head
 
-# def generate_square_subsequent_mask(sz : int)-> Tensor:
-#     return torch.triu(torch.ones(sz,sz) * float('-inf'),diagonal=1)
-    
+   
 
 class PositionalEncoding(nn.Module):
     def __init__(self,d_model:int, dropout: float = .1, max_len: int = 5000):
