@@ -58,10 +58,10 @@ class Collator:
             indices_1= convert_to_unique_indexes(indices,axis=1)
 
             time2 = perf_counter()
-            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect_2,labels_lat,lon_transect_2,labels_lon,threshold=DISTANCE_KM_THRESHOLD) + split 
-            time_taken + = perf_counter() - time2
+            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect_2,labels_lat,lon_transect_2,labels_lon,threshold=DISTANCE_KM_THRESHOLD) 
+            time_taken += perf_counter() - time2
 
-            indices_2= convert_to_unique_indexes(indices,axis=1)
+            indices_2= convert_to_unique_indexes(indices,axis=1) + split
             indices = np.concatenate((indices_1,indices_2),axis=0)
             # self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
             # return {}
@@ -71,7 +71,7 @@ class Collator:
             time_taken = perf_counter() - time
             print(f"Time taken: {time_taken}")
 
-            indices = convert_to_unique_indexes(indices,axis=1)
+            indices = convert_to_unique_indexes(indices,axis=1) 
 
         if use_example:
             selected_labels = xr.load_dataset("processing/example.nc")
@@ -102,8 +102,8 @@ class Collator:
         for group in groups:
             group_labels = selected_labels_grouped[group]
             for group_art_key, group_art_ds in list(group_labels.groupby("Art FAO (kode)")):
-                if group_art_ds["Meldingsversjon"].data.max() != 1:
-                    print("wow")
+                # if group_art_ds["Meldingsversjon"].data.max() != 1:
+                #     print("wow")
                 if group_art_key not in dict:
                     dict[group_art_key] = {'weight':[],'date':[]}
 
@@ -172,35 +172,57 @@ class Watchdog:
     def __del__(self):
         self.timer.cancel()
 
+def fix_labelling(dir = 'ds/labels_crimac_2021/'):
+    l = []
+    for file in os.listdir(dir):
+        print(file)
+        if file.endswith('.json'):
+            d = json.load(open(dir+file))
+            if d.get('other',False) == 'split':
+                l.append([file.split('_')[0],int(d['threshold'])])
+            elif d == {}:
+                l.append([file.split('_')[0],int(file.split('_')[1].split('.')[0])])
+    
+    print(l)
+    return l
+
+
 if __name__ == "__main__":
+    print("hello")
     c = Collator()
     c.load_labels()
-    w = Watchdog()
+    print("hello")
+    # w = Watchdog()
 
-    w.start()
+    # w.start()
 
     files = os.listdir("ds/ds_unlabeled")
     files.sort()
+    files = fix_labelling()
 
-    for file in files:
-        if file.split(".")[0] + f"_{DISTANCE_KM_THRESHOLD}.json" in os.listdir("ds/labels_crimac_2021"):
-            d = json.load(open(f"ds/labels_crimac_2021/{file.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json"))
 
-            if d['other'] == 'split':
-                print(file, "needs new labeling,continueing")
-            else:
-                print(file, "already labeled")
-                continue
+    for file ,threshold in files:
+        file = file + ".nc"
+        print(file)
+        # if not file.endswith(".nc"):
+        #     continue
+
+        # if file.split(".")[0] + f"_{DISTANCE_KM_THRESHOLD}.json" in os.listdir("ds/labels_crimac_2021"):
+        # for threshold in [1,5,10,20,]:
+            # d = json.load(open(f"ds/labels_crimac_2021/{file.split('.')[0]}_{threshold}.json"))
+
+            # if d.get('other',False) == 'split':
+            #     print(file, "needs new labeling,continueing")
+            # else:
+            #     print(file, "already labeled, next")
+            #     continue
             
-        for threshold in [1,5,10,20,]:
-            
-            print(file)
-            DISTANCE_KM_THRESHOLD = threshold
-            ds = load_dataset(f"ds/ds_unlabeled/{file}")
+        DISTANCE_KM_THRESHOLD = threshold
+        ds = load_dataset(f"ds/ds_unlabeled/{file}")
 
-            label_obj = c.collate(ds,fname=file,plot=True)
-            w.reset()
-            c.store_labels(label_obj,fname=file)
-            plt.clf()
+        label_obj = c.collate(ds,fname=file,plot=True)
+        # w.reset()
+        c.store_labels(label_obj,fname=file)
+        plt.clf()
 
-    del w
+    # del w
