@@ -21,6 +21,8 @@ def from_string(string : str,fmt="%d.%m.%Y"):
 
 def create_delta_time(truth :str, obj):
     """Create a delta time object."""
+    if obj is []:
+        return []
     truth = from_string(truth,fmt="D%Y%m%d")
     return [(to_utc(from_string(x)) - to_utc(truth)).days for x in obj] 
 
@@ -108,6 +110,8 @@ def find_max_number_species_code(dir:str = 'ds/labels_crimac_2021/', T="_5"):
 
     print(selection,len(selection))
 
+    selection = list(selection)
+    selection.sort()
     return len(selection),selection
 
 if __name__ == "__main__":

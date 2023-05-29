@@ -41,7 +41,7 @@ def apply_log( source):
     source = source / torch.max(max_value)
     return source
 
-def transform_labels_json(annotation : dict,truth:str,selection : list = None, include_others: int = 0,percentages : bool = False,task : int = 0):
+def transform_labels_json(annotation : dict,truth:str,selection : list = None,percentages : bool = True,onehot : int = 1):
     """
     Exports labels selected from json to array,
     the selected labels are an index, rest is inserted on -1 (other species)
@@ -49,7 +49,7 @@ def transform_labels_json(annotation : dict,truth:str,selection : list = None, i
     if selection is None:
         raise Exception("Selection must be set during classification")
 
-    sz = len(selection)+ include_others # len + 1 for others
+    sz = len(selection) # len + 1 for others
 
     arr = np.zeros(sz)
 
@@ -58,28 +58,33 @@ def transform_labels_json(annotation : dict,truth:str,selection : list = None, i
 
     for key in selection:
         label = annotation.get(key,None)
-        if label and not task:
-        # if key in annotation:
-            arr[selection.index(key)] = label['weight']
-            date_arr.append(create_delta_time(truth, label['date']))
-            del annotation[key]
-        elif label and task: # one hot encoded
+        if label :
             arr[selection.index(key)] = 1
-            date_arr.append(create_delta_time(truth, label['date']))
             del annotation[key]
+            date_arr.append(create_delta_time(truth, label['date']))
+        elif key != "OTHER":
+            date_arr.append([]) # no date for this label
 
-    if include_others:
+    if "OTHER" in selection:
         arr[-1] = sum([annotation[key]['weight'] for key in annotation]) # others
+        if onehot:
+            arr[-1] = 1 if arr[-1] else 0
+            
+            
+        #join all dates to one list
+        values= annotation.values()
+        x = [item['date'][j] for item in values for j in range(len(item['date']))]
+        date_arr.append(create_delta_time(truth, x))
 
-    # if np.sum(arr) == 0:
-    #     arr[-1] = 1
+    if np.sum(arr) == 0 and "OTHER" in selection :
+        arr[-1] = 1
 
-    if percentages:
-        arr = np.clip(arr,1e-5,np.max(arr))
+    if not onehot and np.sum(arr) > 0:
+        arr = np.clip(arr,1e-3,np.max(arr))
         arr = arr / np.sum(arr)
-        arr = np.clip(arr,1e-5,1 - 1e-5)
-
+        arr = np.clip(arr,1e-3,1 - 1e-3)
     
+    # date_arr = np.array(date_arr,)
     return arr, date_arr,selection
 
 
@@ -140,15 +145,14 @@ class Dataset(torch.utils.data.Dataset):
             sv = sv / torch.max(sv)
 
         if self.target_transform:
-            # print(self.example_dir[idx])
-            ann, _ , _ = self.target_transform(ann,truth,self.selection,task=self.task)
+            ann, dates , selection = self.target_transform(ann,truth,self.selection,onehot=self.task,percentages=True)
 
         
         enc,dec = self.split_encoder_decoder(sv,self.seq_length)
 
         # ann = copy.deepcopy(dec)
 
-        return {'enc': enc, 'dec': dec, 'target' :torch.as_tensor(ann) }
+        return {'enc': enc, 'dec': dec, 'target' :torch.as_tensor(ann) , 'date' : dates, 'example' : self.example_dir[idx]}
     
     def split_encoder_decoder(self, data, seq_length):
         encoder = data[:, :seq_length, :]
@@ -187,16 +191,20 @@ def collate_fn_classifier(batch):
     enc = torch.cat([x['enc'] for x in batch],dim=0)
     dec = torch.cat([x['dec'] for x in batch],dim=0)
     target = torch.stack([x['target'] for x in batch],dim=0)
+    date = [x['date'] for x in batch]
+    example = [x['example'] for x in batch]
 
-    return {'enc': enc, 'dec': dec, 'target' :target}
+    return {'enc': enc, 'dec': dec, 'target' :target, 'date' : date, 'example' : example }
 
 def collate_fn2(batch):
     batch = batch
     enc = torch.cat([x['enc'] for x in batch],dim=0)
     dec = torch.cat([x['dec'] for x in batch],dim=0)
     target = torch.cat([x['target'] for x in batch],dim=0)
+    date = torch.cat([x['date'] for x in batch],dim=0)
+    example = [x['example'] for x in batch]
 
-    return {'enc': enc, 'dec': dec, 'target' :target}
+    return {'enc': enc, 'dec': dec, 'target' :target, 'date' : date, 'example' : example}
 def create_dataloader(file_split,example_dir,annotations_dir,selection=None,bsz=8,transform=transform_sv,target_transform=transform_labels_json,shuffle=True,onehot=False,threshold="_5"):
     ds = Dataset(file_split,example_dir,annotations_dir,selection=selection,transform=transform,target_transform=target_transform,task=onehot,threshold=threshold)
     dl = DataLoader(ds, batch_size=bsz, shuffle=shuffle, num_workers=4,collate_fn=collate_fn_classifier)

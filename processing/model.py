@@ -62,7 +62,7 @@ class BERTModel(nn.Module):
 
         if self.activation == 'sigmoid':
             head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
-            head = torch.sigmoid(head)
+           # head = torch.sigmoid(head)
         else:
             head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
 
