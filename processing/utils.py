@@ -84,16 +84,10 @@ def from_nc_to_zarr(dir):
 def segment_image(sv,segment_size=512):
     """
     Create patches of size segment_size from sv
-    all shapes must be equal
-
-    discard the last patch if it is smaller than segment_size
     """
 
-    d, x,y = sv.shape
+    return np.array_split(sv,sv.shape[1]// segment_size,axis=1)
 
-    sv2 = np.array_split(sv,sv.shape[1]// segment_size,axis=1)
-
-    return sv2
 
 def load_npy(path):
     """Load a npy sv"""
@@ -116,14 +110,11 @@ def segment_dir(dir):
                     discard_last = sv2[i].shape[1] < 512
                     if discard_last:
                         continue
-                    crop = sv2[i][:,:512,:]
-                    print(crop.shape)
-                    np.save(dir+'segmented/' +f"{i}_"+file.split(".")[0]+".npy",crop)
+                    segment = sv2[i][:,:512,:]
+                    print(segment.shape)
+                    np.save(dir+'segmented/' +f"{i}_"+file.split(".")[0]+".npy",segment)
 
 
-                # for i in range(len(sv2)-1):
-                #     print(file,i)
-                
             except Exception as e:
                 print(f"Could not convert {file} : {e}")
                 continue

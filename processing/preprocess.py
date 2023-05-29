@@ -69,7 +69,6 @@ class Processor:
         self._data = self.echosounder.get_channel_data()
 
 
-        FREQ_38KHZ = 38000
         datasets = []
 
         for element in self._data:
@@ -100,17 +99,12 @@ class Processor:
 
     def process_sv(self,data) -> list:
         # crimac processing
-        # try:
         _data = self._data
         try:
             data_calibration = data.get_calibration()
         except KeyError as error:
             data_calibration = None
             print(error)
-        # except KeyError as error:
-        #     data_calibration = None
-        #     print(f"Error: {error}")
-
         try:
             sv = data.get_Sv(calibration = data_calibration)
         except Exception as error:
@@ -142,8 +136,7 @@ class Processor:
                                    })
         
         pulse_length = None
-        angle_alongship = None
-        angle_athwartship = None
+
 
         if hasattr(self._data, 'pulse_length'):
             pulse_length = np.unique(data.pulse_length)[0]
@@ -158,17 +151,6 @@ class Processor:
             # Continuous wave sample
             alongship = np.zeros(sv.shape) * np.nan
             athwartship = np.zeros(sv.shape) * np.nan
-
-        
-        position_ds = xr.Dataset(data_vars = dict(
-            lat=('ping_time' , sv.latitude), 
-            lon=("ping_time",sv.longitude), 
-            distance_nmi=('ping_time' , sv.trip_distance_nmi),
-        ),
-        coords = dict(ping_time=('ping_time', sv.ping_time))
-        )
-
-
 
         
         if sv.ping_time.shape[0] == data.motion_data.heave.shape[0]:
@@ -186,15 +168,6 @@ class Processor:
             pitch = data.motion_data.pitch[p_idx]
             roll = data.motion_data.roll[p_idx]
             heading = data.motion_data.heading[p_idx]
-
-        # heave = xr.DataArray(name="heave", data=np.expand_dims(heave, axis=0),
-        #                     dims=['freq','ping_time'],
-        #                     coords={'ping_time': sv.ping_time,
-        #                             'freq': [sv.frequency],
-        #                             }
-        #                     )
-
-
 
         if not self.bottom_file:
             threshold_sv = 10 ** (-31.0 / 10)
@@ -301,15 +274,6 @@ if __name__ == "__main__":
     for file in files:
         example = p.process_raw(file,btm_file=True,to_disk=True)
         print(example)
-    # collator.label_example(example[0],fname=file.split("/")[-1],plot=True)
-
-
-
-
-        # for ds in example:
-        #     collated = collator.collate(ds,fname=file,plot=True)
-        #     print('collated')
-
         plt.clf()
 
     print("done")

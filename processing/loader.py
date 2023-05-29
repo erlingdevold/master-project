@@ -41,66 +41,52 @@ def apply_log( source):
     source = source / torch.max(max_value)
     return source
 
+def remove_examples_not_selection(dict,selection):
+    for item in selection:
+        if item not in dict:
+            return False
+        
+    return True
+
 def transform_labels_json(annotation : dict,truth:str,selection : list = None,percentages : bool = True,onehot : int = 1):
-    """
-    Exports labels selected from json to array,
-    the selected labels are an index, rest is inserted on -1 (other species)
-    """ 
     if selection is None:
         raise Exception("Selection must be set during classification")
 
-    sz = len(selection) # len + 1 for others
+    sz = len(selection) 
 
     arr = np.zeros(sz)
 
     date_arr = []
 
-
     for key in selection:
         label = annotation.get(key,None)
         if label :
-            arr[selection.index(key)] = 1
+            arr[selection.index(key)] = 1 if onehot else label['weight']
             del annotation[key]
             date_arr.append(create_delta_time(truth, label['date']))
-        elif key != "OTHER":
+        else: # if no date, still insert empty list to ascertain right shape.
             date_arr.append([]) # no date for this label
-
-    if "OTHER" in selection:
-        arr[-1] = sum([annotation[key]['weight'] for key in annotation]) # others
-        if onehot:
-            arr[-1] = 1 if arr[-1] else 0
-            
-            
-        #join all dates to one list
-        values= annotation.values()
-        x = [item['date'][j] for item in values for j in range(len(item['date']))]
-        date_arr.append(create_delta_time(truth, x))
-
-    if np.sum(arr) == 0 and "OTHER" in selection :
-        arr[-1] = 1
 
     if not onehot and np.sum(arr) > 0:
         arr = np.clip(arr,1e-3,np.max(arr))
         arr = arr / np.sum(arr)
         arr = np.clip(arr,1e-3,1 - 1e-3)
     
-    # date_arr = np.array(date_arr,)
     return arr, date_arr,selection
-
 
 import random
 
-def cut_dataset( start_at, cut_at, dataset, cut_ends):
-    """
-    Cuts the dataset to fit our model vector size
-    Hakon maloy
-    """
 
-    if cut_ends:
-        dataset = dataset[:, start_at:cut_at]
-    return dataset
+def normalize_sv(sv):
+    mean = torch.mean(sv)
+    std = torch.std(sv)
+
+    sv = (sv- mean)/std
+            
+    sv = sv / torch.max(sv)
+    return sv
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self,file_split,example_dir, annotations_dir,selection, transform=None,target_transform=None,classification_head = 2,task=0,threshold='_5'):
+    def __init__(self,file_split,example_dir, annotations_dir,selection, transform=None,target_transform=None,classification_head = 2,task=0,threshold='_5', strict = True):
         self.head = classification_head
         self.selection= selection
         self.task = task
@@ -112,6 +98,10 @@ class Dataset(torch.utils.data.Dataset):
         for x in self.example_dir:
             if x.split('_')[1] not in self.file_split:
                 self.example_dir.remove(x)
+        if strict:
+            for item in self.example_dir:
+                if not remove_examples_not_selection(load_json(self.annotations_dir_path + item.split(".")[0].split('_')[1] + threshold + '.json'),selection):
+                    self.example_dir.remove(item)
 
         self.annotations_dir = [x.split(".")[0].split('_')[1] + threshold + '.json'  for x in self.example_dir]
 
@@ -134,23 +124,17 @@ class Dataset(torch.utils.data.Dataset):
 
             sv = self.transform(ds[0])
 
-            x,y,z = sv.shape
-            if z > 526:
+            _,_,z = sv.shape
+            if z > 526: # assert that we have the right dimension in example
                 sv = sv[:,:,:526]
-            mean = torch.mean(sv)
-            std = torch.std(sv)
 
-            sv = (sv- mean)/std
-            
-            sv = sv / torch.max(sv)
+            sv = normalize_sv(sv)
 
         if self.target_transform:
             ann, dates , selection = self.target_transform(ann,truth,self.selection,onehot=self.task,percentages=True)
 
         
         enc,dec = self.split_encoder_decoder(sv,self.seq_length)
-
-        # ann = copy.deepcopy(dec)
 
         return {'enc': enc, 'dec': dec, 'target' :torch.as_tensor(ann) , 'date' : dates, 'example' : self.example_dir[idx]}
     
@@ -173,13 +157,8 @@ class SyntheticDataset(Dataset):
             x,y,z = sv.shape
             if z > 526:
                 sv = sv[:,:,:526]
-            mean = torch.mean(sv)
-
-            std = torch.std(sv)
-
-            sv = (sv- mean)/std
-            
-            sv = sv / torch.max(sv)
+            sv = normalize_sv(sv)
+ 
         
         enc,dec = self.split_encoder_decoder(sv,self.seq_length)
 

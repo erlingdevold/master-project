@@ -7,6 +7,10 @@ import math
 
 
 class BERTModel(nn.Module):
+    """
+    BERT model by Håkon Måløy
+    Modified by Erling Devold
+    """
     def __init__(self,input_d:int = 526, d_model:int = 512, nhead: int=8, d_hid:int=2048,n_layers:int=6,dropout:float=.5,seq_length=256,classification=False,n_output : int = 2,activation=None,onehot=False):
         super().__init__()
 
@@ -56,15 +60,12 @@ class BERTModel(nn.Module):
         is_next = self.prob2(self.dropout2(torch.relu(recon_vec)))
 
         return transformer_out,altered_vecs,is_next
+
     def classification_output(self,transformer_out):
         transformer_out = transformer_out.permute(1,0,2)
         recon_vec = transformer_out.reshape(transformer_out.shape[0],-1)
 
-        if self.activation == 'sigmoid':
-            head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
-           # head = torch.sigmoid(head)
-        else:
-            head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
+        head = self.prob4(self.dropout_4(torch.relu(recon_vec)))
 
         return head
 

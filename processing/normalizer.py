@@ -40,7 +40,7 @@ def apply_median_filter(ds: xr.Dataset):
     # fig.savefig("median_test.png")
     ds.sv.data = sv
     return ds 
-
+@nb.njit(fastmath=True,parallel=True)
 def median_filter(x,size=3):
     """
     Median filter

@@ -108,7 +108,7 @@ class LitModel(pl.LightningModule):
             preds = self.model(src.float(),dec.float(),src_mask,dec_mask)
             if self.criterion == 'mse':
                 loss = F.mse_loss(preds,targets,reduction='none')
-                loss = (loss*weights).sum() / weights.sum()
+                loss = (loss*weights).sum() / loss.sum()
 
                 self.log(f'{forward_type}loss', loss, on_step=True, on_epoch=True, prog_bar=True)
                 
@@ -118,13 +118,12 @@ class LitModel(pl.LightningModule):
                 self.log(f'{forward_type}mae', mae.detach().cpu(), on_step=True, on_epoch=True, prog_bar=True)
                 return loss,[],r2,preds
             else:
-
                 # loss = F.binary_cross_entropy(preds,targets,weight=weights if self.temporal else None)
                 loss = F.binary_cross_entropy_with_logits(preds,targets,weight=weights if self.temporal else None)
 
                 self.log(f'{forward_type}loss', loss, on_step=True, on_epoch=True, prog_bar=True,)
+
                 mcc = self.mcc(preds,targets).to(self.device)
-                # preds = preds > .5
                 preds = preds.detach().cpu()
                 targets = targets.detach().cpu()
                 acc = self.accuracy(preds,targets)
@@ -204,7 +203,6 @@ def train_model(classification,regression_head_type : str = '',onehot=0,threshol
         case 'synthetic ':
             selection = None
 
-
         case 'binary':
             selection = ["SAN"]
 
@@ -228,7 +226,7 @@ def train_model(classification,regression_head_type : str = '',onehot=0,threshol
     val_dl = dataloader(val,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",shuffle=False,selection=selection,onehot=onehot,threshold=threshold,bsz=bsz)
 
     if torch.cuda.is_available():
-        trainer = pl.Trainer(accelerator='gpu',devices=1,max_epochs=40,callbacks=[EarlyStopping(monitor='val_loss_epoch',mode='min',patience=5)])
+        trainer = pl.Trainer(accelerator='gpu',devices=1,max_epochs=40) #,callbacks=[EarlyStopping(monitor='val_loss_epoch',mode='min',patience=5)])
 
     trainer.fit(model,train_dataloaders=train_dl,val_dataloaders=val_dl)
     trainer.save_checkpoint(f"models/model_classification_{regression_head_type}{threshold}_{onehot}_{temporal}.ckpt" if classification else "models/model_synthetic.ckpt")

@@ -44,9 +44,28 @@ class Collator:
 
         if lat_transect.shape[0] > 6000:
             # split into 2
-            self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
-            return {}
-        if not use_example:
+            split = int(lat_transect.shape[0]/2)
+            lat_transect_2= lat_transect[:split]
+            lon_transect_2= lon_transect[:split]
+
+            lat_transect = lat_transect[split:]
+            lon_transect = lon_transect[split:]
+
+            time = perf_counter()
+            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
+            time_taken = perf_counter() - time
+
+            indices_1= convert_to_unique_indexes(indices,axis=1)
+
+            time2 = perf_counter()
+            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect_2,labels_lat,lon_transect_2,labels_lon,threshold=DISTANCE_KM_THRESHOLD) + split 
+            time_taken + = perf_counter() - time2
+
+            indices_2= convert_to_unique_indexes(indices,axis=1)
+            indices = np.concatenate((indices_1,indices_2),axis=0)
+            # self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
+            # return {}
+        elif not use_example:
             time = perf_counter()
             distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
             time_taken = perf_counter() - time
@@ -132,14 +151,14 @@ class Collator:
 import os, threading
 class Watchdog:
     """
-    Class for ensure process doesnt go out of hand
+    Class to ensure process doesnt go out of hand
 
     """
     def __init__(self):
         self.timer = None
 
     def start(self):
-        self.timer = threading.Timer(60*3, self.stop)
+        self.timer = threading.Timer(60*10, self.stop)
         self.timer.start()
     
     def stop(self):
@@ -153,9 +172,6 @@ class Watchdog:
     def __del__(self):
         self.timer.cancel()
 
-   
-
-
 if __name__ == "__main__":
     c = Collator()
     c.load_labels()
@@ -168,8 +184,13 @@ if __name__ == "__main__":
 
     for file in files:
         if file.split(".")[0] + f"_{DISTANCE_KM_THRESHOLD}.json" in os.listdir("ds/labels_crimac_2021"):
-            print(file, "already labeled")
-            continue
+            d = json.load(open(f"ds/labels_crimac_2021/{file.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json"))
+
+            if d['other'] == 'split':
+                print(file, "needs new labeling,continueing")
+            else:
+                print(file, "already labeled")
+                continue
             
         for threshold in [1,5,10,20,]:
             

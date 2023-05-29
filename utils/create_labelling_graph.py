@@ -50,8 +50,8 @@ def distinct_classes_graph(dir:str):
         threshold_dict[k] = np.array(threshold_dict[k])
         plt.plot(threshold_dict[k],label=f'threshold={k}')
 
-    plt.xlabel('Number of distinct classes')
-    plt.ylabel('Number of examples')
+    plt.ylabel('Number of distinct classes')
+    plt.xlabel('Number of examples')
 
     plt.legend()
     plt.savefig("plots/distinct_classes.pdf")
