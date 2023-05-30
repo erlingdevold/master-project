@@ -16,7 +16,7 @@ simrad_cmap.set_bad(color='grey')
 def load_dataset(fname):
     return xr.open_dataset(fname,engine='netcdf4')
 
-@nb.njit(fastmath=True,parallel=True)
+# @nb.njit(fastmath=True)
 def calculate_haversine(lat_transect,lat_labels,lon_transect,lon_labels):
     lon_transect,lat_transect,lon_labels,lat_labels = np.radians(lon_transect),np.radians(lat_transect),np.radians(lon_labels),np.radians(lat_labels)
 

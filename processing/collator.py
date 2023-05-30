@@ -54,8 +54,9 @@ class Collator:
             time = perf_counter()
             distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
             time_taken = perf_counter() - time
+            del distance_matrix
 
-            indices_1= convert_to_unique_indexes(indices,axis=1)
+            indices = convert_to_unique_indexes(indices,axis=1)
 
             time2 = perf_counter()
             distance_matrix,indices = calculate_haversine_unvectorized(lat_transect_2,labels_lat,lon_transect_2,labels_lon,threshold=DISTANCE_KM_THRESHOLD) 

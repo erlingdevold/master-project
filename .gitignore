@@ -16,3 +16,4 @@ lol*
 
 *.ckpt
 hparams.yaml
+date_dict.json

@@ -104,6 +104,7 @@ class Dataset(torch.utils.data.Dataset):
                     self.example_dir.remove(item)
 
         self.annotations_dir = [x.split(".")[0].split('_')[1] + threshold + '.json'  for x in self.example_dir]
+        print(f"size of ds {len(self.example_dir)} ")
 
         self.seq_length = 256
         self.transform = transform

@@ -21,10 +21,7 @@ def parse_params(params):
     return 'regression'
 
 
-
-
-
-def plot(file : str , ):
+def plot(file : str , keys : list = ['val_loss_epoch','val_acc_epoch',] ):
     try:
         df = pd.read_csv( file + '/metrics.csv')
         params = read_params(file + '/hparams.yaml')
@@ -32,78 +29,121 @@ def plot(file : str , ):
         print('FileNotFoundError')
         return
 
-    list = [df['val_loss_epoch'].dropna(), df['val_loss_epoch'].dropna(), ]
     x = 'regression'
     print(params)
     print(df.columns)
     if (x := parse_params(params) ) == 'multi' :
-        list = [df['val_acc_epoch'].dropna(), df['val_recall_epoch'].dropna(), df['val_precision_epoch'].dropna(), df['val_loss_epoch'].dropna()]
+
+        list = [df[k].dropna() for k in keys]
     if (x := parse_params(params) ) == 'binary' :
-        list = [df['val_acc_epoch'].dropna(), df['val_recall_epoch'].dropna(), df['val_precision_epoch'].dropna(), df['val_loss_epoch'].dropna()]
+        list = [df['val_acc_epoch'].dropna(),  df['val_loss_epoch'].dropna()]
+    
+    if (x := parse_params(params) ) == 'regression' :
+        list = [df['val_loss_epoch'].dropna(), df['val_mae_epoch'].dropna() ]
 
     
     return x, params, list
 
 def plot_dict(dict,num_rows=2):
     for model_type in dict:
-        print(dict[model_type])
+        if model_type == 'regression':
+
+            ylabels=['Loss (MSE)','MAE']
+        else:
+            ylabels=['Loss (BCE)','Accuracy']
+
         try:
             num_plots = len(list(dict[model_type].values())[0][0])
         except:
             continue
-        print(num_plots)
-        fig,ax = plt.subplots(num_plots,2,figsize=(10,10))
+        fig,ax = plt.subplots(num_plots,1,figsize=(10,10))
+        fig2,ax2 = plt.subplots(num_plots,1,figsize=(10,10))
+
         
         handles = []
         for i,threshold in enumerate(dict[model_type]):
             for t in range(len(dict[model_type][threshold])):
                 for j,metric in enumerate(dict[model_type][threshold][t]):
-                        try:
-                            h = ax[j][t].plot(metric.values,label= threshold.replace('_',' ' + 'km labels') )
-                        except:
-                            continue
-                        ax[j][t].set_ylabel(metric.name.split('_')[1].capitalize())
-                        ax[j][t].grid()
+                    if t:
+                        x = ax2
+                    else:
+                        x = ax
+
+                    try:
+                        h = x[j].plot(metric,label= threshold.replace('_',' ' + 'km labels') )
+                    except:
+                        continue
+
+                    x[j].set_ylabel(ylabels[j])
+                    x[j].set_xlabel('Epoch')
+                    x[j].grid()
         labels = [ item + ' km threshold label' for item in list(dict[model_type].keys())]
         fig.legend(labels,loc='upper center', ncol=4)
-        # fig.suptitle(model_type)
+        fig2.legend(labels,loc='upper center', ncol=4)
 
-        plt.savefig('plots/models/' +model_type + '.png',bbox_inches='tight',dpi=300)
+        fig.savefig('plots/models/' +model_type + '.pdf',bbox_inches='tight',dpi=300)
+        fig2.savefig('plots/models/temporal_' +model_type + '.pdf',bbox_inches='tight',dpi=300)
         
 
         plt.close()
-
-
 import os
-if __name__ == "__main__":
-    dirs = os.listdir('lightning_logs')
+
+def parse_dir_to_dict(metricsdir: str):
+    dirs = os.listdir(metricsdir)
     dirs.sort()
-    # threshold_dict = { "1_1" :{'multi' : [],'regression' : []}, "_5" : {}, "_10" : {}, "_20": {}}
     threshold_dict = {'multi' : {},'regression' : {},'binary' : {}}
     
     for dir in dirs:
         if dir.startswith('version'):
             try:
-                type, params, l  =plot('lightning_logs/' + dir )
+                type, params, l  =plot(f'{metricsdir}/' + dir )
             except :
                 continue
-            # if params['threshold'] not in threshold_dict[type]:
                 
             thresh = params['threshold'].split('_')[1]
             if thresh not in threshold_dict[type]:
                 threshold_dict[type][thresh] = [[0],[0]]
+
             threshold_dict[type][thresh][params['temporal']] = l
+        
 
     # print(threshold_dict['multi'].keys())
-    plot_dict(threshold_dict)
-"""
-eg foreslår følgende struktur her: seksjonn requirements åpner med lsiten av req's slik som den gjør akkurat nå. deretter deler du section requirements inn i subsections der du beskriver dypere hvert punkt i lista over requirements
+    # plot_dict(threshold_dict)
+    return threshold_dict
 
-neste seksjon blir noe sånt som proposed design, og forteller hva du har tenkt å gjøre for å oppfylle kravene. bruk referanser tilbake til de subsections som beskriver kravene. noe som "To fulfil the XX requirement described in section \ref{YY} we wil ..."
-May 26, 2023 6:28 PM
+#pylint: disable=consider-using-dict-items
 
-einar.j.holsbo: Så vil antakelig dette med model architectures falle inn i ett av disse, antakelig det med training/inference?
-""
+if __name__ == "__main__":
+    dir1 = parse_dir_to_dict('lightning_logs/run_1_final')
+    dir2 = parse_dir_to_dict('lightning_logs/run_2_final') 
+    dir3 = parse_dir_to_dict('lightning_logs/run_3_final')
+
+    print(dir1)
+    print(dir2)
+    print(dir3)
+    
+    l = [dir1,dir2,dir3]
+    average_pd_frame = pd.DataFrame()
+    for model_type in dir1:
+        for threshold in dir1[model_type]:
+            for t in range(len(dir1[model_type][threshold])):
+                for j,metric in enumerate(dir1[model_type][threshold][t]):
+                    metric1 = dir1[model_type][threshold][t][j].values
+
+                    try:
+                        metric2 = dir2[model_type][threshold][t][j].values
+                    except:
+                        metric2 = dir1[model_type][threshold][t][j].values # missing value?
+                    metric3 = dir3[model_type][threshold][t][j].values
+
+                    arr = np.c_[metric1,metric2,metric3]
+
+                    dir1[model_type][threshold][t][j] = np.mean(arr,axis=1)
+   
+    plot_dict(dir1)
+
+    
 
 
-"""
+
+

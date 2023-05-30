@@ -194,6 +194,8 @@ def split_train_test_val(dir,train_size=0.8,test_size=0.1,val_size=0.1):
     train = files[:int(len(files) * train_size)]
     test = files[int(len(files) * train_size):int(len(files) * (train_size + test_size))]
     val = files[int(len(files) * (train_size + test_size)):]
+    print("train,test,val")
+    print(len(train),len(test),len(val))
 
 
     return train, test, val
@@ -224,6 +226,9 @@ def train_model(classification,regression_head_type : str = '',onehot=0,threshol
     train_dl = dataloader(train,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",selection=selection,onehot=onehot,threshold=threshold,bsz=bsz)
     test_dl = dataloader(test,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",shuffle=False,selection=selection,onehot=onehot,threshold=threshold,bsz=bsz)
     val_dl = dataloader(val,"ds/ds_labeled/segmented/","ds/labels_crimac_2021/",shuffle=False,selection=selection,onehot=onehot,threshold=threshold,bsz=bsz)
+    print(len(train_dl))
+    print(len(test_dl))
+    print(len(val_dl))
 
     if torch.cuda.is_available():
         trainer = pl.Trainer(accelerator='gpu',devices=1,max_epochs=40) #,callbacks=[EarlyStopping(monitor='val_loss_epoch',mode='min',patience=5)])
