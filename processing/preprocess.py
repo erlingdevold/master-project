@@ -20,16 +20,6 @@ from collator import Collator
 
 DISTANCE_KM_THRESHOLD = 1. # KM threshold for labelling
 
-def format_datetime(x, pos=None):
-            try:
-                dt = x.astype('datetime64[ms]').astype('object')
-                tick_label = dt.strftime("%H:%M:%S")
-            except:
-                tick_label = ''
-
-            return tick_label
-
-
 class Processor:
     def __init__(self) -> None:
         self.echosounder = None
@@ -38,9 +28,7 @@ class Processor:
         self._config = None
 
     def read_files(self,dir : str = ""):
-        """
-        reads a directories .raw files
-        """
+
         files = os.listdir(dir)
 
         return [dir + "/" +file for file in files if file.endswith('.raw')]
@@ -77,8 +65,6 @@ class Processor:
                 print("retreived 120kHz data")
                 ds = self.process_sv(data)
                 datasets.append(ds)
-                # print("skipping, we only look at 128kHZ frequnecies")
-
            
         labels = xr.open_dataset('labelling/dca_labels_subset.nc')
 
@@ -174,6 +160,7 @@ class Processor:
             heave_corrected_transducer_depth = heave + depth[0]
             pulse_duration = float(pulse_length)
 
+            # Bottom detection simple from CRIMAC
             depth_ranges, indices = detect_bottom_single_channel(
                 xr_sv[0], threshold_sv,  heave_corrected_transducer_depth, pulse_duration, minimum_range=10.
             )
@@ -185,7 +172,7 @@ class Processor:
             bottom_depths = np.nan_to_num(bottom_depths, nan=np.min(bottom_depths))
             bottom_depths = xr.DataArray(name='bottom_depth', data=bottom_depths, dims=['ping_time'],
                                     coords={'ping_time': xr_sv['ping_time']})
-        
+            # End bottom detection from CRIMAC
         else:
             bottom_depths = data.get_bottom()
 
@@ -271,6 +258,7 @@ if __name__ == "__main__":
     '/home/erling/master/processing/crimac_data/sample_pipeline_output/cruise_data/2019/S2019847_PEROS_3317/ACOUSTIC/EK60/EK60_RAWDATA'
     # files = p.read_files('/data/saas/Nordtind/ES80/ES80-120')
     # files = p.read_files('/data/saas/Ek80FraSimrad')
+
     for file in files:
         example = p.process_raw(file,btm_file=True,to_disk=True)
         print(example)

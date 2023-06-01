@@ -120,7 +120,6 @@ if __name__ == "__main__":
     x = crop_matrix_bottom(ds,crop=0)
     ax[1].imshow(rotate_image(x.sv.data[0]),aspect='auto',interpolation='none',label='cropped')
 
-    print('asd')
     plt.savefig("crops.png")
 
 

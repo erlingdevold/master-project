@@ -2,13 +2,13 @@ import datetime
 import numpy as np
 import xarray as xr
 
+import json
+from utils import load_json
 """
 File for converting json labels to xarray datasets.
 provides utilites for calculating delta time and converting to days
 Used for calculating mse in model
 """
-import json
-
 
 def to_utc(dt):
     """Convert a datetime object to UTC time."""
@@ -25,11 +25,6 @@ def create_delta_time(truth :str, obj):
         return []
     truth = from_string(truth,fmt="D%Y%m%d")
     return [(to_utc(from_string(x)) - to_utc(truth)).days for x in obj] 
-
-def load_json(path):
-    """Load a json file."""
-    with open(path, "r") as f:
-        return json.load(f)
 
 def dict_to_da(obj,key):
     return  xr.DataArray(np.array([obj[key]['weight']],dtype=np.float64,ndmin=2),

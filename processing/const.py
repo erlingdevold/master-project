@@ -1,7 +1,7 @@
 
 MAIN_FREQ = 120000  # 120 kHz
 
-
+# color table from PyeEcholab examples
 simrad_color_table = [(1, 1, 1),
                                         (0.6235, 0.6235, 0.6235),
                                         (0.3725, 0.3725, 0.3725),
