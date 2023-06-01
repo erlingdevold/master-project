@@ -142,11 +142,16 @@ def compute_time(dir: str = 'ds/stats'):
         if d['size'] < 0 or d['time'] < 0:
             continue
         threshold_dict[d['threshold']].append((d['time'],d['size']))
+    avg_time = []
     
     for k in threshold_dict.keys():
         threshold_dict[k] = sorted(threshold_dict[k], key=lambda x: x[0])
         threshold_dict[k] = np.array(threshold_dict[k])
         plt.scatter(threshold_dict[k][:,0],threshold_dict[k][:,1], label=f'threshold={k}')
+        avg_time.append(np.mean(threshold_dict[k][:,0]))
+    
+    print(np.mean(avg_time))
+
     
     # plt.xscale('log')
     plt.xlabel('Time to label (s)')
@@ -160,9 +165,9 @@ def compute_time(dir: str = 'ds/stats'):
 
 
 if __name__ == "__main__":
-    size_graph('ds/stats')
+    # size_graph('ds/stats')
     # plt.clf()
     # distinct_classes_graph('ds/labels_crimac_2021/')
     # plt.clf()
     # temporal_proximity_histogram('ds/ds_unlabeled/','ds/labels_crimac_2021/')
-    # compute_time()
+    compute_time()
