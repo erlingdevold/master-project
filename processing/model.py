@@ -69,9 +69,11 @@ class BERTModel(nn.Module):
 
         return head
 
-   
-
 class PositionalEncoding(nn.Module):
+    """
+    Positional encoding by EchoBert author Håkon Måløy
+    modified by Erling Devold
+    """
     def __init__(self,d_model:int, dropout: float = .1, max_len: int = 5000):
         super().__init__()
 

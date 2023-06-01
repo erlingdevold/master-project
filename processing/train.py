@@ -23,19 +23,7 @@ import torchmetrics
 from to_utc import find_max_number_species_code
 
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-
-
-
-def calculate_classification_loss_and_accuracy(preds,targets,pos_weight=None):
-    print(targets)
-
-    preds = preds.view(targets.shape)
-    loss = F.mse_loss(torch.log(preds+1).cpu().detach(),torch.log(targets).cpu().detach(),reduction='mean',)
-
-    return loss.float()
-
-def gaussian_function(x, mu,sig):
-    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+from utils import gaussian_function
 
 def calculate_loss_resampling_weight(dates : list = [],mu=0,sig=2000):
 
@@ -54,6 +42,10 @@ def calculate_loss_resampling_weight(dates : list = [],mu=0,sig=2000):
     return weights
 
 class LitModel(pl.LightningModule):
+    """
+    Training class inspired by EchoBERT and Pytorch Lightnings own documentation
+    
+    """
     def __init__(self,classification=False,load_model=False,n_output=2,onehot=False,activation='sigmoid',threshold='_5',criterion='bce',temporal=False,sig=500,steps_per_epoch=1000,lr = 1e-3, epoch=30):
         super().__init__()
 

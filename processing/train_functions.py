@@ -1,23 +1,16 @@
 
 
-from typing import Any, Optional
-from lightning.pytorch.utilities.types import STEP_OUTPUT
-import numpy as np
 import torch
-import time
 import random
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import lightning.pytorch as pl
-from loader import create_synthetic_dataloader,create_dataloader
-import torch.nn as nn
-
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import OneCycleLR
-# from sklearn.metrics import f1_score,accuracy_score,precision_score,recall_score
-from model import BERTModel
 
 
+
+"""
+Functions for training the synthetic model
+Created by Håkon Måløy, EchoBERT
+
+"""
 
 def calculate_synthetic_loss(probs=None,
                              is_next_pred=None,

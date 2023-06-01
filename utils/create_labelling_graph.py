@@ -94,6 +94,7 @@ def retrieve_date_dict(image_dir:str , dir:str='ds/labels_crimac_2021'):
                     date_dict[k].append(create_delta_time(date,t)) 
 
 def temporal_proximity_histogram(image_dir: str,dir:str='ds/labels_crimac_2021'):
+    """Create a histogram of temporal proximity to truth, requires labels and dataset. date_dict should be included for reprocucibility."""
     # threshold_dict = {1:[],5:[],10:[],20:[] }
 
     # for d ,threshold in load_dir(dir):
@@ -126,13 +127,14 @@ def temporal_proximity_histogram(image_dir: str,dir:str='ds/labels_crimac_2021')
         date_dict[k] = sorted(date_dict[k], key=lambda x: x)
         date_dict[k] = np.array(date_dict[k])
         ax[i].hist(date_dict[k],bins=1000,label=f'threshold={k}')
+        ax[i].legend()
         ax[i].set_ylabel('Number of catch messages')
         i += 1
 
     fig.legend(['1 km threshold','5 km threshold','10 km threshold','20 km threshold'],loc='upper center', ncol=2)
     ax[-1].set_xlabel('Temporal proximity to truth (days since truth)')
 
-    plt.savefig(f"plots/temporal_proximity.pdf")
+    plt.savefig(f"plots/temporal_proximity_new.pdf")
 
             
 def compute_time(dir: str = 'ds/stats'):
@@ -169,5 +171,5 @@ if __name__ == "__main__":
     # plt.clf()
     # distinct_classes_graph('ds/labels_crimac_2021/')
     # plt.clf()
-    # temporal_proximity_histogram('ds/ds_unlabeled/','ds/labels_crimac_2021/')
-    compute_time()
+    temporal_proximity_histogram('ds/ds_unlabeled/','ds/labels_crimac_2021/')
+    # compute_time()

@@ -32,14 +32,10 @@ def apply_median_filter(ds: xr.Dataset):
         return
     sv = ds.sv.to_numpy()
 
-    # fig,ax = plt.subplots(2,1)
-    # ax[0].imshow(rotate_image(sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none',label='cropped')
-
     sv  = median_filter(sv,size=3)
-    # ax[1].imshow(rotate_image(sv[0]),cmap=simrad_cmap,aspect='auto',interpolation='none',)
-    # fig.savefig("median_test.png")
     ds.sv.data = sv
     return ds 
+
 @nb.njit(fastmath=True,parallel=True)
 def median_filter(x,size=3):
     """
@@ -59,10 +55,6 @@ def rotate_image(x):
     return np.flipud(np.rot90(x,1))
 
 def crop_matrix_bottom(ds,plot=False,fn='sd',crop=0):
-    """
-    Crop matrix from bottom line
-    Finds largest index, and masks out the rest
-    """
     OFFSET = 2
 
     if ds is None:
@@ -93,10 +85,6 @@ def crop_matrix_bottom(ds,plot=False,fn='sd',crop=0):
     return x
 
 def transform_sv(sv):
-    """
-    Transform sv data
-    """
-
     sv = arrange_data(sv)
 
     return sv
@@ -112,18 +100,6 @@ def divide_in_sequences(ds, sequence_len = 256 ):
 
 
 def arrange_data(ds : xr.Dataset,sequence_len = 256):
-    """
-
-    sequence based arrangement of data
-    sv is a 3d matrix, where the first dimension is the 
-        frequency dimension, and the second and third are the
-        range and time dimensions respectively.
-
-
-        
-    TODO : implement for CNN inference as well
-    """
-
     if ds is None:
         return
     

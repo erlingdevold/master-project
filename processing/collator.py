@@ -19,11 +19,7 @@ class Collator:
     
     
     def load_labels(self,fname='labelling/dca_labels_subset.nc'):
-        """
-        Load labels from database
-        """
         self.labels = xr.open_dataset(fname)
-
         self.labels = self.labels.dropna(dim='dim_0',how='any')
 
 
@@ -44,28 +40,10 @@ class Collator:
 
         if lat_transect.shape[0] > 6000:
             # split into 2
-            split = int(lat_transect.shape[0]/2)
-            lat_transect_2= lat_transect[:split]
-            lon_transect_2= lon_transect[:split]
+            
 
-            lat_transect = lat_transect[split:]
-            lon_transect = lon_transect[split:]
-
-            time = perf_counter()
-            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
-            time_taken = perf_counter() - time
-            del distance_matrix
-
-            indices = convert_to_unique_indexes(indices,axis=1)
-
-            time2 = perf_counter()
-            distance_matrix,indices = calculate_haversine_unvectorized(lat_transect_2,labels_lat,lon_transect_2,labels_lon,threshold=DISTANCE_KM_THRESHOLD) 
-            time_taken += perf_counter() - time2
-
-            indices_2= convert_to_unique_indexes(indices,axis=1) + split
-            indices = np.concatenate((indices_1,indices_2),axis=0)
-            # self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
-            # return {}
+            self.store_label_information(fname.split(".")[0],{"time": -1,"size" : -1,"threshold":DISTANCE_KM_THRESHOLD,"other":"split",})
+            return {}
         elif not use_example:
             time = perf_counter()
             distance_matrix,indices = calculate_haversine_unvectorized(lat_transect,labels_lat,lon_transect,labels_lon,threshold=DISTANCE_KM_THRESHOLD)
@@ -100,13 +78,13 @@ class Collator:
 
         dict = {}
 
+        # group by Melding ID
         for group in groups:
             group_labels = selected_labels_grouped[group]
             for group_art_key, group_art_ds in list(group_labels.groupby("Art FAO (kode)")):
-                # if group_art_ds["Meldingsversjon"].data.max() != 1:
-                #     print("wow")
                 if group_art_key not in dict:
                     dict[group_art_key] = {'weight':[],'date':[]}
+                # find all unique species
 
                 largest_version = group_art_ds.isel(dim_0=-1)
 
@@ -126,15 +104,13 @@ class Collator:
 
         ds.to_netcdf(fname)
     def store_labels(self,labels,fname):
-        with open(f"ds/labels_crimac_2021/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json", 'w') as fp:
+        with open(f"ds/labels/{fname.split('.')[0]}_{DISTANCE_KM_THRESHOLD}.json", 'w') as fp:
             json.dump(labels, fp)
 
     def plot_lat_lon(self,ax,labels):
         """
         Plot lat lon
         """
-        # fig, ax = plt.subplots()
-        # ax.scatter(ds.lat.data[0],ds.lon.data[0],label='data')
         ax.scatter(labels['Startposisjon bredde'].data,labels['Startposisjon lengde'].data,label='labels')
         ax.legend()
 
@@ -173,7 +149,7 @@ class Watchdog:
     def __del__(self):
         self.timer.cancel()
 
-def fix_labelling(dir = 'ds/labels_crimac_2021/'):
+def fix_labelling(dir = 'ds/labels/'):
     l = []
     for file in os.listdir(dir):
         print(file)
@@ -189,34 +165,19 @@ def fix_labelling(dir = 'ds/labels_crimac_2021/'):
 
 
 if __name__ == "__main__":
-    print("hello")
     c = Collator()
     c.load_labels()
-    print("hello")
-    # w = Watchdog()
+    w = Watchdog()
 
-    # w.start()
+    w.start()
 
     files = os.listdir("ds/ds_unlabeled")
     files.sort()
-    files = fix_labelling()
+    # files = fix_labelling()
 
 
     for file ,threshold in files:
         file = file + ".nc"
-        print(file)
-        # if not file.endswith(".nc"):
-        #     continue
-
-        # if file.split(".")[0] + f"_{DISTANCE_KM_THRESHOLD}.json" in os.listdir("ds/labels_crimac_2021"):
-        # for threshold in [1,5,10,20,]:
-            # d = json.load(open(f"ds/labels_crimac_2021/{file.split('.')[0]}_{threshold}.json"))
-
-            # if d.get('other',False) == 'split':
-            #     print(file, "needs new labeling,continueing")
-            # else:
-            #     print(file, "already labeled, next")
-            #     continue
             
         DISTANCE_KM_THRESHOLD = threshold
         ds = load_dataset(f"ds/ds_unlabeled/{file}")

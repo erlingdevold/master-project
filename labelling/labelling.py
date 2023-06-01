@@ -69,11 +69,11 @@ if __name__ == "__main__":
         labels = merge_labels(labels)
         write_to_file(labels)
 
-    if os.path.exists("labelling/dca_labels_subset.nc"):
+    if not os.path.exists("labelling/dca_labels_subset.nc"):
         labels =read_file("labelling/dca_labels.nc")
 
         all_labels =  list(labels.data_vars.keys())
-        print(all_labels)
+        
         labels_to_select = ["Starttidspunkt","Startdato","Stopptidspunkt","Stoppdato","Startposisjon bredde","Havdybde start","Rundvekt","Havdybde stopp","Melding ID","Meldingsversjon","Meldingstidspunkt","Startposisjon lengde","Stopposisjon bredde","Stopposisjon lengde","Art FAO", "Hovedart FAO","Meldingsnummer","Art FAO (kode)","Hovedart FAO (kode)"]
         subset_labels = create_subset(labels,labels_to_select) 
 
@@ -88,12 +88,9 @@ if __name__ == "__main__":
 
         duplicate_id_idx = subset_labels["Melding ID"]
 
-        
-
         write_to_file(subset_labels,"labelling/dca_labels_subset.nc")
 
     labels = read_file("labelling/dca_labels_subset.nc")
-    print(labels)
 
 
 

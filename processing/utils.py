@@ -6,9 +6,8 @@ from numba import prange
 import matplotlib.pyplot as plt
 from time import perf_counter
 from matplotlib.colors import LinearSegmentedColormap, Colormap
-
+import json, os
 from const import simrad_color_table
-# from dask.distributed import Client
 
 simrad_cmap = (LinearSegmentedColormap.from_list('simrad', simrad_color_table))
 simrad_cmap.set_bad(color='grey')
@@ -41,9 +40,7 @@ def calculate_distance(lat,lon,labels_lat,labels_lon):
 @nb.njit(fastmath=True,parallel=True)
 def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lons_labels,threshold=10.):
     i  =0
-
     array = np.zeros((lats_transect.shape[0],lons_labels.shape[0]))
-    print(array.shape)
     print("starting")
 
     for i in prange(array.shape[0]):
@@ -60,17 +57,10 @@ def calculate_haversine_unvectorized(lats_transect,lats_labels,lons_transect,lon
     return array, indexes
 
 def convert_to_unique_indexes(indices,axis=0):
-    """
-    Convert indices to unique indexes
-    """
     return np.unique(indices[:,axis])
 
+import os
 def from_nc_to_zarr(dir):
-    """
-    Parse a dir to zarr arrays
-    """
-
-    import os
     files = os.listdir(dir)
     for file in files:
         if file.endswith('.nc'):
@@ -82,24 +72,26 @@ def from_nc_to_zarr(dir):
                 continue
 
 def segment_image(sv,segment_size=512):
-    """
-    Create patches of size segment_size from sv
-    """
-
     return np.array_split(sv,sv.shape[1]// segment_size,axis=1)
 
+def gaussian_function(x, mu,sig):
+    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
 
 def load_npy(path):
-    """Load a npy sv"""
     return np.load(path)
 
+def load_json(path):
+    with open(path, "r") as f:
+        return json.load(f)
+
+def read_dir(dir : str,extension : str = ""):
+    dirs = os.listdir(dir)
+    dirs = [x for x in dirs if x.endswith(".npy")]
+    dirs.sort()
+
+    return dirs
+
 def segment_dir(dir):
-    """
-    Parse a dir to zarr arrays
-    """
-
-    import os
-
     files = os.listdir(dir)
 
     for file in files:

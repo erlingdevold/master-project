@@ -2,37 +2,25 @@ import copy
 from torch.utils.data import DataLoader
 import xarray as xr
 import torch
-
+import numpy as np
 from to_utc import create_delta_time
 from normalizer import transform_sv, rotate_image
 import os,json
 import matplotlib.pyplot as plt
+from utils import load_json,load_npy,read_dir
+import random
+def normalize_sv(sv):
+    mean = torch.mean(sv)
+    std = torch.std(sv)
 
-def read_dir(dir : str,extension : str = ""):
-    dirs = os.listdir(dir)
-    dirs = [x for x in dirs if x.endswith(".npy")]
-    dirs.sort()
-
-    return dirs
-
-def load_json(path):
-    """Load a json file."""
-    with open(path, "r") as f:
-        return json.load(f)
-
-def load_npy(path):
-    """Load a npy sv"""
-    return np.load(path)
+    sv = (sv- mean)/std
+            
+    sv = sv / torch.max(sv)
+    return sv
 
 
-import numpy as np
 
 def apply_log( source):
-    """
-    Applies a log function to bring the dataset values down to a range 0-1
-    :param source: The dataset to work on
-    :return: The log version of the dataset
-    """
     # Bring values down to range between 0 and 1
     source = torch.log(source)
     source[torch.isneginf(source)] = 0
@@ -74,7 +62,6 @@ def transform_labels_json(annotation : dict,truth:str,selection : list = None,pe
     
     return arr, date_arr,selection
 
-import random
 
 
 def normalize_sv(sv):
@@ -114,7 +101,6 @@ class Dataset(torch.utils.data.Dataset):
         return len(self.example_dir)
 
     def __getitem__(self, idx):
-
         ds = load_npy(self.example_dir_path  + self.example_dir[idx])
         ds = torch.as_tensor(ds)
         ann = load_json(self.annotations_dir_path + self.annotations_dir[idx])
@@ -147,6 +133,10 @@ class Dataset(torch.utils.data.Dataset):
  
 class SyntheticDataset(Dataset):
 
+    """
+    
+    __getitem__ method from håkon målØys echobert
+    """
     def __getitem__(self, idx):
 
         ds = load_npy(self.example_dir_path  + self.example_dir[idx])
@@ -159,8 +149,7 @@ class SyntheticDataset(Dataset):
             if z > 526:
                 sv = sv[:,:,:526]
             sv = normalize_sv(sv)
- 
-        
+         
         enc,dec = self.split_encoder_decoder(sv,self.seq_length)
 
         ann = copy.deepcopy(dec)
@@ -191,15 +180,13 @@ def create_dataloader(file_split,example_dir,annotations_dir,selection=None,bsz=
     return dl
 
 def create_synthetic_dataloader(file_split,example_dir,annotations_dir,bsz=8,transform=transform_sv,target_transform=transform_labels_json,shuffle=True,threshold="_5"):
+    """
+    Create a dataloader for the synthetic dataset
+    Original author Håkon Måløy
+    Extended by Erling DEvold
+    """
 
     ds = SyntheticDataset(file_split, example_dir,annotations_dir,None,transform=transform,target_transform=None)
     dl = DataLoader(ds, batch_size=bsz, shuffle=shuffle, num_workers=4,collate_fn=collate_fn2)
 
     return dl
-
-# if __name__ == "__main__":
-    # dl = create_dataloader("ds/ds_labeled/","ds/labels_crimac_2021/",transform=transform_sv,target_transform=transform_labels_json)
-
-    # for item in dl:
-    #     print(item)
-    #     break
