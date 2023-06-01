@@ -95,28 +95,30 @@ def retrieve_date_dict(image_dir:str , dir:str='ds/labels_crimac_2021'):
 
 def temporal_proximity_histogram(image_dir: str,dir:str='ds/labels_crimac_2021'):
     """Create a histogram of temporal proximity to truth, requires labels and dataset. date_dict should be included for reprocucibility."""
-    # threshold_dict = {1:[],5:[],10:[],20:[] }
 
-    # for d ,threshold in load_dir(dir):
-    #     for species in d:
-    #         threshold_dict[threshold].append((d[species]['date']))
-    
-    # date_dict = {1:[],5:[],10:[],20:[]}
-    # for date in os.listdir(image_dir):
-    #     if date.endswith('.nc'):
-    #         truth = date.split('-')[1]
 
-    #         for k in threshold_dict.keys():
-    #             for t in threshold_dict[k]:
-    #                 for date in t:
-    #                     try:
-    #                         date_dict[k].append((to_utc(from_string(date)) - to_utc(from_string(truth,fmt="D%Y%m%d"))).days)
-    #                     except ValueError:
-    #                         print('oki')
-    #                         continue
-                    # date_dict[k].append(create_delta_time(date,t))
+    try:
+        date_dict = json.load(open('plots/date_dict.json','r'))
+    except:
+        threshold_dict = {1:[],5:[],10:[],20:[] }
 
-    date_dict = json.load(open('plots/date_dict.json','r'))
+        for d ,threshold in load_dir(dir):
+            for species in d:
+                threshold_dict[threshold].append((d[species]['date']))
+        
+        date_dict = {1:[],5:[],10:[],20:[]}
+        for date in os.listdir(image_dir):
+            if date.endswith('.nc'):
+                truth = date.split('-')[1]
+
+                for k in threshold_dict.keys():
+                    for t in threshold_dict[k]:
+                        for date in t:
+                            try:
+                                date_dict[k].append((to_utc(from_string(date)) - to_utc(from_string(truth,fmt="D%Y%m%d"))).days)
+                            except ValueError:
+                                continue
+                        date_dict[k].append(create_delta_time(date,t))
 
 
     fig,ax = plt.subplots(4,1,figsize=(10,10))
